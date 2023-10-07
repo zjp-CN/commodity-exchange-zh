@@ -5,10 +5,14 @@ edition = "2021"
 publish = ["ktra"]
 
 [dependencies]
-calamine = "0.22.0"
-minreq = "2.10.0"
-zip = { version = "0.6.6", default-features = false }
+calamine = "0.22"
+minreq = "2"
+zip = { version = "0.6", default-features = false }
 log = "0.4"
 simplelog = "0.12"
+compact_str = { version = "0.7", features = ["serde"] }
 bytesize = "1"
-lexical = "*"
+serde = { version = "1", features = ["derive"] }
+regex = "1"
+time = { version = "0.3", features = ["parsing", "serde"] }
+csv = "1"
