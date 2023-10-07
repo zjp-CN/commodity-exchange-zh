@@ -1,0 +1,14 @@
+[package]
+name = "commodity-exchange-zh"
+version = "0.1.0"
+edition = "2021"
+publish = ["ktra"]
+
+[dependencies]
+calamine = "0.22.0"
+minreq = "2.10.0"
+zip = { version = "0.6.6", default-features = false }
+log = "0.4"
+simplelog = "0.12"
+bytesize = "1"
+lexical = "*"
