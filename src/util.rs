@@ -1,8 +1,7 @@
-use serde::{Deserialize, Deserializer};
-use time::Date;
-
 use crate::Result;
+use serde::{Deserialize, Deserializer};
 use std::{io::ErrorKind, path::PathBuf, sync::OnceLock};
+use time::{format_description::FormatItem, macros::format_description, Date};
 
 /// 测试函数的日志
 #[cfg(test)]
@@ -14,20 +13,19 @@ pub fn init_log() -> &'static Init {
 
 pub struct Init {
     pub cache_dir: PathBuf,
-    pub czce_time_fmt: &'static [time::format_description::FormatItem<'static>],
 }
 
 fn init_data() -> &'static Init {
     static DATA: OnceLock<Init> = OnceLock::new();
     DATA.get_or_init(|| Init {
         cache_dir: cache_dir().unwrap(),
-        czce_time_fmt: time::macros::format_description!("[year]-[month]-[day]"),
     })
 }
 
 pub fn parse_date_czce<'de, D: Deserializer<'de>>(d: D) -> Result<Date, D::Error> {
+    const FMT: &[FormatItem<'static>] = format_description!("[year]-[month]-[day]");
     let s = <&str>::deserialize(d)?;
-    Ok(Date::parse(s, init_data().czce_time_fmt)
+    Ok(Date::parse(s, FMT)
         .map_err(|err| format!("{s:?} 无法解析成日期：{err:?}"))
         .unwrap())
 }
@@ -47,8 +45,8 @@ pub fn parse_option_f32<'de, D: Deserializer<'de>>(d: D) -> Result<Option<f32>, 
 
 pub fn parse_u32_from_f32<'de, D: Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
     let s = <&str>::deserialize(d)?;
-    let float = s
-        .parse::<f32>()
+    let float: f32 = s
+        .parse()
         .map_err(|_| format!("{s} 无法解析为 f32"))
         .unwrap();
     if float < 0.0 {
