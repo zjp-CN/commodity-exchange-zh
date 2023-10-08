@@ -4,7 +4,7 @@
 extern crate log;
 
 /// 郑州商品交易所
-mod czce;
+pub mod czce;
 /// 大连商品交易所
 mod dce;
 

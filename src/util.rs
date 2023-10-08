@@ -21,6 +21,14 @@ pub fn init_log() -> &'static Init {
     init_data()
 }
 
+#[cfg(feature = "tabled")]
+pub fn display_option<T: std::fmt::Display>(t: &Option<T>) -> String {
+    match t {
+        Some(val) => val.to_string(),
+        None => String::new(),
+    }
+}
+
 pub struct Init {
     pub cache_dir: PathBuf,
     pub regex_czce: Regex,

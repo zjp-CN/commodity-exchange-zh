@@ -16,3 +16,13 @@ serde = { version = "1", features = ["derive"] }
 regex = "1"
 time = { version = "0.3", features = ["parsing", "serde"] }
 csv = "1"
+
+tabled = { version = "0.14", optional = true }
+
+[dev-dependencies]
+insta = "1"
+
+[[test]]
+name = "data"
+path = "./tests/data.rs"
+required-features = ["tabled"]

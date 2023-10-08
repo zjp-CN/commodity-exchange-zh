@@ -34,39 +34,58 @@ fn fetch_parse_xls() -> Result<()> {
 }
 
 #[derive(Deserialize, Debug)]
+#[cfg_attr(feature = "tabled", derive(tabled::Tabled))]
 pub struct Data {
     /// 交易日期
     #[serde(deserialize_with = "crate::util::parse_date_czce")]
+    #[cfg_attr(feature = "tabled", tabled(rename = "交易日期"))]
     date: Date,
     /// 合约代码
+    #[cfg_attr(feature = "tabled", tabled(rename = "合约代码"))]
     code: Str,
     /// 昨结算
+    #[cfg_attr(feature = "tabled", tabled(rename = "昨结算"))]
     prev: f32,
     /// 今开盘
+    #[cfg_attr(feature = "tabled", tabled(rename = "今开盘"))]
     open: f32,
     /// 最高价
+    #[cfg_attr(feature = "tabled", tabled(rename = "最高价"))]
     high: f32,
     /// 最低价
+    #[cfg_attr(feature = "tabled", tabled(rename = "最低价"))]
     low: f32,
     /// 今收盘
+    #[cfg_attr(feature = "tabled", tabled(rename = "今收盘"))]
     close: f32,
     /// 今结算
+    #[cfg_attr(feature = "tabled", tabled(rename = "今结算"))]
     settle: f32,
     /// 涨跌1：涨幅百分数??
+    #[cfg_attr(feature = "tabled", tabled(rename = "涨跌1"))]
     zd1: f32,
     /// 涨跌2：涨跌数??
+    #[cfg_attr(feature = "tabled", tabled(rename = "涨跌2"))]
     zd2: f32,
     /// 成交量
+    #[cfg_attr(feature = "tabled", tabled(rename = "成交量"))]
     vol: u32,
     /// 持仓量
     #[serde(deserialize_with = "crate::util::parse_u32_from_f32")]
+    #[cfg_attr(feature = "tabled", tabled(rename = "持仓量"))]
     position: u32,
     /// 增减量
+    #[cfg_attr(feature = "tabled", tabled(rename = "增减量"))]
     pos_delta: i32,
     /// 交易额（万）
+    #[cfg_attr(feature = "tabled", tabled(rename = "交易额（万）"))]
     amount: f32,
     /// 交割结算价
     #[serde(deserialize_with = "crate::util::parse_option_f32")]
+    #[cfg_attr(
+        feature = "tabled",
+        tabled(display_with = "crate::util::display_option", rename = "交割结算价")
+    )]
     dsp: Option<f32>,
 }
 
@@ -105,18 +124,6 @@ pub fn parse_txt(raw: &str, f: impl FnMut(Data)) -> Result<()> {
             }
         })
         .for_each(f);
-    Ok(())
-}
-
-#[test]
-fn test_parse_txt() -> Result<()> {
-    let init = crate::util::init_log();
-    let mut file = BufReader::new(File::open(init.cache_dir.join("ALLFUTURES2023.txt"))?);
-    let capacity = file.get_ref().metadata()?.len() as usize;
-    let mut buf = String::with_capacity(capacity);
-    file.read_to_string(&mut buf)?;
-    let pos = Regex::new("\n")?.find_iter(&buf).nth(5).unwrap().end();
-    parse_txt(&buf[..pos], |data| info!("data = {data:?}"));
     Ok(())
 }
 
