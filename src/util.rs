@@ -1,25 +1,45 @@
 use crate::Result;
+use bytesize::ByteSize;
+use regex::Regex;
 use serde::{Deserialize, Deserializer};
-use std::{io::ErrorKind, path::PathBuf, sync::OnceLock};
+use std::{
+    io::{Cursor, ErrorKind},
+    path::PathBuf,
+    sync::OnceLock,
+};
 use time::{format_description::FormatItem, macros::format_description, Date};
 
 /// 测试函数的日志
 #[cfg(test)]
 pub fn init_log() -> &'static Init {
     use simplelog::{Config, LevelFilter, SimpleLogger};
-    SimpleLogger::init(LevelFilter::Info, Config::default()).expect("logger initialization failed");
+    let level = std::env::var("TEST_LOG").map_or_else(
+        |_| LevelFilter::Off,
+        |l| l.parse().unwrap_or(LevelFilter::Off),
+    );
+    SimpleLogger::init(level, Config::default()).expect("logger initialization failed");
     init_data()
 }
 
 pub struct Init {
     pub cache_dir: PathBuf,
+    pub regex_czce: Regex,
 }
 
-fn init_data() -> &'static Init {
+pub fn init_data() -> &'static Init {
     static DATA: OnceLock<Init> = OnceLock::new();
     DATA.get_or_init(|| Init {
         cache_dir: cache_dir().unwrap(),
+        regex_czce: Regex::new(",| ").unwrap(),
     })
+}
+
+pub type Response = Result<Cursor<Vec<u8>>>;
+
+pub fn fetch(url: &str) -> Response {
+    let bytes = minreq::get(url).send()?.into_bytes();
+    info!("{url} 获取的字节数：{}", ByteSize(bytes.len() as u64));
+    Ok(Cursor::new(bytes))
 }
 
 pub fn parse_date_czce<'de, D: Deserializer<'de>>(d: D) -> Result<Date, D::Error> {

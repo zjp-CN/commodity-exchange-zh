@@ -1,6 +1,10 @@
-use crate::{Result, Str};
+use crate::{
+    util::{fetch, init_data, Response},
+    Result, Str,
+};
 use bytesize::ByteSize;
 use calamine::{Reader, Xls, XlsOptions};
+use csv::StringRecordsIter;
 use regex::Regex;
 use serde::Deserialize;
 use std::{
@@ -14,14 +18,12 @@ const XLS: &str =
 
 const URL: &str = "http://www.czce.com.cn/cn/DFSStaticFiles/Future/2023/ALLFUTURES2023.zip";
 
-pub fn fetch_xls(year: u16) -> Result<Cursor<Vec<u8>>> {
+pub fn fetch_xls(year: u16) -> Response {
     let url = format!(
         "http://www.czce.com.cn/cn/DFSStaticFiles/\
          Future/{year}/FutureDataAllHistory/ALLFUTURES{year}.xls",
     );
-    let bytes = minreq::get(url).send()?.into_bytes();
-    info!("{URL} 获取的字节数：{}", ByteSize(bytes.len() as u64));
-    Ok(Cursor::new(bytes))
+    fetch(&url)
 }
 
 fn fetch_parse_xls() -> Result<()> {
@@ -68,31 +70,53 @@ pub struct Data {
     dsp: Option<f32>,
 }
 
+pub fn fetch_txt(year: u16) -> Response {
+    fetch(&format!(
+        "http://www.czce.com.cn/cn/DFSStaticFiles/Future/{year}/ALLFUTURES{year}.zip"
+    ))
+}
+
+pub fn parse_txt(raw: &str, f: impl FnMut(Data)) -> Result<()> {
+    let mut start = 0;
+    // 跳过前两行
+    for head in raw.lines().take(2) {
+        info!("{head}");
+        start += head.len();
+    }
+    start += 1;
+    // 删除所有数字千位分隔符和单元格内的空格
+    let stripped = init_data().regex_czce.replace_all(&raw[start..], "");
+    let mut reader = csv::ReaderBuilder::new()
+        .delimiter(b'|')
+        .from_reader(stripped.as_bytes());
+    reader
+        .records()
+        .filter_map(|record| match &record {
+            Ok(line) => match line.deserialize::<Data>(None) {
+                Ok(data) => Some(data),
+                Err(err) => {
+                    error!("反序列化 {line:?} 出错：{err:?}");
+                    None
+                }
+            },
+            Err(err) => {
+                error!("解析 {record:?} 出错：{err:?}");
+                None
+            }
+        })
+        .for_each(f);
+    Ok(())
+}
+
 #[test]
-fn parse_txt() -> Result<()> {
+fn test_parse_txt() -> Result<()> {
     let init = crate::util::init_log();
     let mut file = BufReader::new(File::open(init.cache_dir.join("ALLFUTURES2023.txt"))?);
     let capacity = file.get_ref().metadata()?.len() as usize;
     let mut buf = String::with_capacity(capacity);
     file.read_to_string(&mut buf)?;
-    let mut lines = buf.lines();
-    let mut start = 0;
-    for head in lines.by_ref().take(2) {
-        info!("{head}");
-        start += head.len();
-    }
-    start += 1;
-    info!("buf = {}...", &buf[start..start + 10]);
-    let buf = Regex::new(",| ")?.replace_all(&buf[start..], "");
-    let mut reader = csv::ReaderBuilder::new()
-        .delimiter(b'|')
-        .from_reader(buf.as_bytes());
-    for line in reader.records().take(3) {
-        let line = line?;
-        info!("line = {line:?}");
-        let data: Data = line.deserialize(None)?;
-        info!("data = {data:?}");
-    }
+    let pos = Regex::new("\n")?.find_iter(&buf).nth(5).unwrap().end();
+    parse_txt(&buf[..pos], |data| info!("data = {data:?}"));
     Ok(())
 }
 
