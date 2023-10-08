@@ -16,7 +16,7 @@ fn test_parse_txt() -> Result<()> {
     file.read_to_string(&mut buf)?;
     let pos = Regex::new("\n")?.find_iter(&buf).nth(5).unwrap().end();
     let mut v = Vec::new();
-    parse_txt(&buf[..pos], |data| v.push(data))?;
+    parse_txt(&buf[..pos], Some(|data| v.push(data)))?;
     shot!(Table::new(v), @r###"
     +------------+----------+--------+--------+--------+--------+--------+--------+-------+-------+--------+--------+--------+--------------+------------+
     | 交易日期   | 合约代码 | 昨结算 | 今开盘 | 最高价 | 最低价 | 今收盘 | 今结算 | 涨跌1 | 涨跌2 | 成交量 | 持仓量 | 增减量 | 交易额（万） | 交割结算价 |

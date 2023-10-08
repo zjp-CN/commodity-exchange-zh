@@ -95,7 +95,7 @@ pub fn fetch_txt(year: u16) -> Response {
     ))
 }
 
-pub fn parse_txt(raw: &str, f: impl FnMut(Data)) -> Result<()> {
+pub fn parse_txt(raw: &str, f: Option<impl FnMut(Data)>) -> Result<String> {
     let mut start = 0;
     // 跳过前两行
     for head in raw.lines().take(2) {
@@ -104,7 +104,11 @@ pub fn parse_txt(raw: &str, f: impl FnMut(Data)) -> Result<()> {
     }
     start += 1;
     // 删除所有数字千位分隔符和单元格内的空格
-    let stripped = init_data().regex_czce.replace_all(&raw[start..], "");
+    let stripped = init_data()
+        .regex_czce
+        .replace_all(&raw[start..], "")
+        .into_owned();
+    let Some(f) = f else { return Ok(stripped) };
     let mut reader = csv::ReaderBuilder::new()
         .delimiter(b'|')
         .from_reader(stripped.as_bytes());
@@ -124,7 +128,7 @@ pub fn parse_txt(raw: &str, f: impl FnMut(Data)) -> Result<()> {
             }
         })
         .for_each(f);
-    Ok(())
+    Ok(stripped)
 }
 
 #[test]
