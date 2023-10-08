@@ -9,7 +9,7 @@ use tabled::Table;
 
 #[test]
 fn test_parse_txt() -> Result<()> {
-    let init = util::init_data();
+    let init = util::init_test_log();
     let mut file = BufReader::new(File::open(init.cache_dir.join("ALLFUTURES2023.txt"))?);
     let capacity = file.get_ref().metadata()?.len() as usize;
     let mut buf = String::with_capacity(capacity);

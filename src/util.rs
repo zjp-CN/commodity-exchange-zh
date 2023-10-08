@@ -10,8 +10,8 @@ use std::{
 use time::{format_description::FormatItem, macros::format_description, Date};
 
 /// 测试函数的日志
-#[cfg(test)]
-pub fn init_log() -> &'static Init {
+#[doc(hidden)]
+pub fn init_test_log() -> &'static Init {
     use simplelog::{Config, LevelFilter, SimpleLogger};
     let level = std::env::var("TEST_LOG").map_or_else(
         |_| LevelFilter::Off,

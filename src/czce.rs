@@ -145,7 +145,7 @@ fn parse_xls() -> Result<()> {
 
 #[test]
 fn fetch_parse() -> Result<()> {
-    let init = crate::util::init_log();
+    let init = crate::util::init_test_log();
     let resp = minreq::get(URL).send()?;
     let bytes = resp.as_bytes();
     info!("{URL} 获取的字节数：{}", ByteSize(bytes.len() as u64));
