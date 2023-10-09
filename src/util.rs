@@ -16,7 +16,7 @@ use time::{format_description::FormatItem, macros::format_description, Date};
 /// 开启日志
 pub fn init_log() -> Result<()> {
     let level = std::env::var("LOG").map_or_else(
-        |_| LevelFilter::Off,
+        |_| LevelFilter::Info,
         |l| l.parse().unwrap_or(LevelFilter::Off),
     );
     let mut config = ConfigBuilder::new();
