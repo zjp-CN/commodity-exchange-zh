@@ -1,5 +1,5 @@
 use crate::{
-    util::{fetch, init_data, Response},
+    util::{fetch, init_data, save_csv, Response},
     Result, Str,
 };
 use bytesize::ByteSize;
@@ -10,8 +10,10 @@ use serde::Deserialize;
 use std::{
     fs::File,
     io::{self, BufRead, BufReader, Cursor, Read},
+    path::{Path, PathBuf},
 };
 use time::Date;
+use zip::read::ZipFile;
 
 const XLS: &str =
     "http://www.czce.com.cn/cn/DFSStaticFiles/Future/2023/FutureDataAllHistory/ALLFUTURES2023.xls";
@@ -89,10 +91,47 @@ pub struct Data {
     dsp: Option<f32>,
 }
 
-pub fn fetch_txt(year: u16) -> Response {
-    fetch(&format!(
+pub fn run(year: u16) -> Result<()> {
+    fetch_txt(year, |raw, fname| {
+        let mut csv_content = parse_txt(raw, None::<fn(_) -> _>)?;
+        save_csv(&csv_content, &fname)?;
+        Ok(())
+    })
+}
+
+pub fn fetch_txt(
+    year: u16,
+    mut handle_unzipped: impl FnMut(&str, PathBuf) -> Result<()>,
+) -> Result<()> {
+    let fetched = fetch(&format!(
         "http://www.czce.com.cn/cn/DFSStaticFiles/Future/{year}/ALLFUTURES{year}.zip"
-    ))
+    ))?;
+    let mut zipped = zip::ZipArchive::new(fetched)?;
+    for i in 0..zipped.len() {
+        let mut unzipped = zipped.by_index(i)?;
+        if unzipped.is_file() {
+            let unzipped_path = unzipped
+                .enclosed_name()
+                .ok_or_else(|| format!("`{}` 无法转成 &Path", unzipped.name()))?;
+            let size = unzipped.size();
+            info!(
+                "{URL} 获取的第 {i} 个文件：{} ({} => {})",
+                unzipped_path.display(),
+                ByteSize(unzipped.compressed_size()),
+                ByteSize(size),
+            );
+            let file_name = unzipped_path
+                .file_name()
+                .and_then(|fname| Some(format!("郑州-{}", fname.to_str()?)))
+                .ok_or_else(|| format!("无法从 {unzipped_path:?} 中获取文件名"))?;
+            let mut buf = Vec::with_capacity(size as usize);
+            io::copy(&mut unzipped, &mut buf)?;
+            handle_unzipped(std::str::from_utf8(&buf)?, file_name.into())?;
+        } else {
+            return Err(format!("{} 还未实现解压成文件夹", unzipped.name()).into());
+        }
+    }
+    Ok(())
 }
 
 pub fn parse_txt(raw: &str, f: Option<impl FnMut(Data)>) -> Result<String> {

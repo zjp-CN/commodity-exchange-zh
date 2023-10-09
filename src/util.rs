@@ -2,17 +2,37 @@ use crate::Result;
 use bytesize::ByteSize;
 use regex::Regex;
 use serde::{Deserialize, Deserializer};
+use simplelog::{
+    ColorChoice, Config, ConfigBuilder, LevelFilter, SimpleLogger, TermLogger, TerminalMode,
+};
 use std::{
-    io::{Cursor, ErrorKind},
-    path::PathBuf,
+    fs::File,
+    io::{Cursor, ErrorKind, Write},
+    path::{Path, PathBuf},
     sync::OnceLock,
 };
 use time::{format_description::FormatItem, macros::format_description, Date};
 
+/// 开启日志
+pub fn init_log() -> Result<()> {
+    let level = std::env::var("LOG").map_or_else(
+        |_| LevelFilter::Off,
+        |l| l.parse().unwrap_or(LevelFilter::Off),
+    );
+    let mut config = ConfigBuilder::new();
+    config.set_time_offset(time::UtcOffset::from_hms(8, 0, 0)?);
+    TermLogger::init(
+        level,
+        config.build(),
+        TerminalMode::Mixed,
+        ColorChoice::Auto,
+    )?;
+    Ok(())
+}
+
 /// 测试函数的日志
 #[doc(hidden)]
 pub fn init_test_log() -> &'static Init {
-    use simplelog::{Config, LevelFilter, SimpleLogger};
     let level = std::env::var("TEST_LOG").map_or_else(
         |_| LevelFilter::Off,
         |l| l.parse().unwrap_or(LevelFilter::Off),
@@ -99,4 +119,15 @@ pub fn cache_dir() -> Result<PathBuf> {
         }
     }
     Ok(dir)
+}
+
+pub fn save_csv(s: &str, filename: impl AsRef<Path>) -> Result<PathBuf> {
+    let fname = filename.as_ref();
+    let mut path = init_data().cache_dir.join(fname);
+    if !path.set_extension("csv") {
+        error!("{} 无法设置 csv 文件名后缀", fname.display());
+    }
+    File::create(&path)?.write_all(s.trim().as_bytes())?;
+    info!("{} 已被写入", path.display());
+    Ok(path)
 }

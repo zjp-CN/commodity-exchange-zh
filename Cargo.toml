@@ -17,10 +17,16 @@ regex = "1"
 time = { version = "0.3", features = ["parsing", "serde"] }
 csv = "1"
 
+argh = { version = "0.1", optional = true }
 tabled = { version = "0.14", optional = true }
 
 [dev-dependencies]
 insta = "1"
+
+[[bin]]
+name = "ce"
+path = "src/main.rs"
+required-features = ["argh"]
 
 [[test]]
 name = "data"
