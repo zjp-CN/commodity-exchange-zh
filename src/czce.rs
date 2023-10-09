@@ -1,38 +1,31 @@
 use crate::{
-    util::{fetch, init_data, save_csv, Response},
+    util::{fetch, init_data, save_csv},
     Result, Str,
 };
 use bytesize::ByteSize;
-use calamine::{Reader, Xls, XlsOptions};
-use csv::StringRecordsIter;
-use regex::Regex;
 use serde::Deserialize;
-use std::{
-    fs::File,
-    io::{self, BufRead, BufReader, Cursor, Read},
-    path::{Path, PathBuf},
-};
+use std::{io, path::PathBuf};
 use time::Date;
-use zip::read::ZipFile;
 
-const XLS: &str =
-    "http://www.czce.com.cn/cn/DFSStaticFiles/Future/2023/FutureDataAllHistory/ALLFUTURES2023.xls";
+const MEMO: &str = "自2020年1月1日起，成交量、持仓量、成交额、行权量均为单边计算";
 
-const URL: &str = "http://www.czce.com.cn/cn/DFSStaticFiles/Future/2023/ALLFUTURES2023.zip";
-
-pub fn fetch_xls(year: u16) -> Response {
-    let url = format!(
-        "http://www.czce.com.cn/cn/DFSStaticFiles/\
-         Future/{year}/FutureDataAllHistory/ALLFUTURES{year}.xls",
-    );
-    fetch(&url)
-}
-
-fn fetch_parse_xls() -> Result<()> {
-    // let init = crate::util::init_log();
-    let reader = fetch_xls(2023)?;
-    let workbook = Xls::new_with_options(reader, XlsOptions::default())?;
-    Ok(())
+/// 注意：
+/// 2010..=2014 使用 http://www.czce.com.cn/cn/exchange/datahistory2010.zip
+/// 2015..=2019 使用 http://www.czce.com.cn/cn/DFSStaticFiles/Future/2019/FutureDataHistory.zip
+/// 2020..      使用 http://www.czce.com.cn/cn/DFSStaticFiles/Future/2023/ALLFUTURES2023.zip
+pub fn get_url(year: u16) -> Result<String> {
+    let this_year = init_data().this_year;
+    let url = match year {
+        2010..=2014 => format!("http://www.czce.com.cn/cn/exchange/datahistory{year}.zip"),
+        2015..=2019 => {
+            format!("http://www.czce.com.cn/cn/DFSStaticFiles/Future/{year}/FutureDataHistory.zip")
+        }
+        2020.. if year <= this_year => {
+            format!("http://www.czce.com.cn/cn/DFSStaticFiles/Future/{year}/FutureDataAllHistory/ALLFUTURES{year}.xls")
+        }
+        _ => return Err(format!("{year} 必须在 2010..={this_year} 范围内").into()),
+    };
+    Ok(url)
 }
 
 #[derive(Deserialize, Debug)]
@@ -41,60 +34,61 @@ pub struct Data {
     /// 交易日期
     #[serde(deserialize_with = "crate::util::parse_date_czce")]
     #[cfg_attr(feature = "tabled", tabled(rename = "交易日期"))]
-    date: Date,
+    pub date: Date,
     /// 合约代码
     #[cfg_attr(feature = "tabled", tabled(rename = "合约代码"))]
-    code: Str,
+    pub code: Str,
     /// 昨结算
     #[cfg_attr(feature = "tabled", tabled(rename = "昨结算"))]
-    prev: f32,
+    pub prev: f32,
     /// 今开盘
     #[cfg_attr(feature = "tabled", tabled(rename = "今开盘"))]
-    open: f32,
+    pub open: f32,
     /// 最高价
     #[cfg_attr(feature = "tabled", tabled(rename = "最高价"))]
-    high: f32,
+    pub high: f32,
     /// 最低价
     #[cfg_attr(feature = "tabled", tabled(rename = "最低价"))]
-    low: f32,
+    pub low: f32,
     /// 今收盘
     #[cfg_attr(feature = "tabled", tabled(rename = "今收盘"))]
-    close: f32,
+    pub close: f32,
     /// 今结算
     #[cfg_attr(feature = "tabled", tabled(rename = "今结算"))]
-    settle: f32,
+    pub settle: f32,
     /// 涨跌1：涨幅百分数??
     #[cfg_attr(feature = "tabled", tabled(rename = "涨跌1"))]
-    zd1: f32,
+    pub zd1: f32,
     /// 涨跌2：涨跌数??
     #[cfg_attr(feature = "tabled", tabled(rename = "涨跌2"))]
-    zd2: f32,
+    pub zd2: f32,
     /// 成交量
     #[cfg_attr(feature = "tabled", tabled(rename = "成交量"))]
-    vol: u32,
+    pub vol: u32,
     /// 持仓量
     #[serde(deserialize_with = "crate::util::parse_u32_from_f32")]
     #[cfg_attr(feature = "tabled", tabled(rename = "持仓量"))]
-    position: u32,
+    pub position: u32,
     /// 增减量
     #[cfg_attr(feature = "tabled", tabled(rename = "增减量"))]
-    pos_delta: i32,
+    pub pos_delta: i32,
     /// 交易额（万）
     #[cfg_attr(feature = "tabled", tabled(rename = "交易额（万）"))]
-    amount: f32,
+    pub amount: f32,
     /// 交割结算价
     #[serde(deserialize_with = "crate::util::parse_option_f32")]
     #[cfg_attr(
         feature = "tabled",
         tabled(display_with = "crate::util::display_option", rename = "交割结算价")
     )]
-    dsp: Option<f32>,
+    pub dsp: Option<f32>,
 }
 
 pub fn run(year: u16) -> Result<()> {
     fetch_txt(year, |raw, fname| {
-        let mut csv_content = parse_txt(raw, None::<fn(_) -> _>)?;
+        let csv_content = parse_txt(raw, None::<fn(_) -> _>)?;
         save_csv(&csv_content, &fname)?;
+        info!("来自【郑州交易所】的数据备注：{MEMO}");
         Ok(())
     })
 }
@@ -103,9 +97,8 @@ pub fn fetch_txt(
     year: u16,
     mut handle_unzipped: impl FnMut(&str, PathBuf) -> Result<()>,
 ) -> Result<()> {
-    let fetched = fetch(&format!(
-        "http://www.czce.com.cn/cn/DFSStaticFiles/Future/{year}/ALLFUTURES{year}.zip"
-    ))?;
+    let url = get_url(year)?;
+    let fetched = fetch(&url)?;
     let mut zipped = zip::ZipArchive::new(fetched)?;
     for i in 0..zipped.len() {
         let mut unzipped = zipped.by_index(i)?;
@@ -115,7 +108,7 @@ pub fn fetch_txt(
                 .ok_or_else(|| format!("`{}` 无法转成 &Path", unzipped.name()))?;
             let size = unzipped.size();
             info!(
-                "{URL} 获取的第 {i} 个文件：{} ({} => {})",
+                "{url} 获取的第 {i} 个文件：{} ({} => {})",
                 unzipped_path.display(),
                 ByteSize(unzipped.compressed_size()),
                 ByteSize(size),
@@ -168,50 +161,4 @@ pub fn parse_txt(raw: &str, f: Option<impl FnMut(Data)>) -> Result<String> {
         })
         .for_each(f);
     Ok(stripped)
-}
-
-#[test]
-fn parse_xls() -> Result<()> {
-    let mut xls = calamine::open_workbook_auto("./cache/c.xlsx")?;
-    // let mut opts = XlsOptions::default();
-    // opts.force_codepage = Some(1201);
-    // let mut xls = Xls::new_with_options(File::open("./cache/ALLFUTURES2023.xls")?, opts)?;
-    info!("Reading {:?} in c.xlsx", xls.sheet_names());
-    let sheet = xls
-        .worksheet_range_at(0)
-        .ok_or_else(|| format!("无法获取到第 0 个表，所有表为：{:?}", xls.sheet_names()))??;
-    for row in sheet.rows().take(3) {
-        println!("{row:#?}");
-    }
-    Ok(())
-}
-
-#[test]
-fn fetch_parse() -> Result<()> {
-    let init = crate::util::init_test_log();
-    let resp = minreq::get(URL).send()?;
-    let bytes = resp.as_bytes();
-    info!("{URL} 获取的字节数：{}", ByteSize(bytes.len() as u64));
-    let mut zipped = zip::ZipArchive::new(Cursor::new(bytes))?;
-    for i in 0..zipped.len() {
-        let mut unzipped = zipped.by_index(i)?;
-        if unzipped.is_file() {
-            let file_name = unzipped
-                .enclosed_name()
-                .ok_or_else(|| format!("`{}` 无法转成 &Path", unzipped.name()))?;
-            info!(
-                "{URL} 获取的第 {i} 个文件：{} ({} => {})",
-                file_name.display(),
-                ByteSize(unzipped.compressed_size()),
-                ByteSize(unzipped.size()),
-            );
-            let cached_file = init.cache_dir.join(file_name);
-            let mut file = File::create(&cached_file)?;
-            io::copy(&mut unzipped, &mut file)?;
-            info!("已解压至 {}", cached_file.display());
-        } else {
-            return Err(format!("{} 还未实现解压成文件夹", unzipped.name()).into());
-        }
-    }
-    Ok(())
 }

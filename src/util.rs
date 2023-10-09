@@ -11,7 +11,7 @@ use std::{
     path::{Path, PathBuf},
     sync::OnceLock,
 };
-use time::{format_description::FormatItem, macros::format_description, Date};
+use time::{format_description::FormatItem, macros::format_description, Date, OffsetDateTime};
 
 /// 开启日志
 pub fn init_log() -> Result<()> {
@@ -52,6 +52,7 @@ pub fn display_option<T: std::fmt::Display>(t: &Option<T>) -> String {
 pub struct Init {
     pub cache_dir: PathBuf,
     pub regex_czce: Regex,
+    pub this_year: u16,
 }
 
 pub fn init_data() -> &'static Init {
@@ -59,6 +60,11 @@ pub fn init_data() -> &'static Init {
     DATA.get_or_init(|| Init {
         cache_dir: cache_dir().unwrap(),
         regex_czce: Regex::new(",| ").unwrap(),
+        this_year: OffsetDateTime::now_local()
+            .unwrap()
+            .year()
+            .try_into()
+            .unwrap(),
     })
 }
 
@@ -85,7 +91,7 @@ pub fn parse_option_f32<'de, D: Deserializer<'de>>(d: D) -> Result<Option<f32>, 
     } else {
         let float = s
             .parse()
-            .map_err(|err| format!("{s:?} 无法解析为 f32"))
+            .map_err(|err| format!("{s:?} 无法解析为 f32：{err:?}"))
             .unwrap();
         Ok(Some(float))
     }

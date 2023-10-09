@@ -14,7 +14,7 @@ compact_str = { version = "0.7", features = ["serde"] }
 bytesize = "1"
 serde = { version = "1", features = ["derive"] }
 regex = "1"
-time = { version = "0.3", features = ["parsing", "serde"] }
+time = { version = "0.3", features = ["parsing", "serde", "local-offset"] }
 csv = "1"
 
 argh = { version = "0.1", optional = true }
