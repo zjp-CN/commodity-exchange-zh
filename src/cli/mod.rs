@@ -71,19 +71,22 @@ impl std::str::FromStr for Year {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let err = |err: std::num::ParseIntError| format!("{s} 无法解析为 u16: {err}");
         let pattern = r"^((?P<range>(?P<start>\d{4})\.\.(?P<end>\d{4}))|(?P<single>\d{4}))$";
         let re = Regex::new(pattern).unwrap();
         let cap = re
             .captures(s)
             .ok_or_else(|| format!(r"{s} 不是年份，应输入 \d{{4}} 或者 \d{{4}}..\d{{4}}"))?;
+        let parse = |key: &str| {
+            let res = cap.name(key).unwrap().as_str().parse::<u16>();
+            res.map_err(|err| format!("{s} 无法解析为 u16: {err}"))
+        };
         let year = if cap.name("range").is_some() {
             Year::Range {
-                start: cap.name("start").unwrap().as_str().parse().map_err(err)?,
-                end: cap.name("end").unwrap().as_str().parse().map_err(err)?,
+                start: parse("start")?,
+                end: parse("end")?,
             }
         } else {
-            Year::Single(cap.name("single").unwrap().as_str().parse().map_err(err)?)
+            Year::Single(parse("single")?)
         };
         Ok(year)
     }
