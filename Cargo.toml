@@ -23,6 +23,9 @@ tabled = { version = "0.14", optional = true }
 [dev-dependencies]
 insta = "1"
 
+[features]
+default = ["argh"]
+
 [[bin]]
 name = "ce"
 path = "src/main.rs"

@@ -2,37 +2,36 @@ use crate::{Result, Str};
 use commodity_exchange_zh::Exchange;
 use regex::Regex;
 
-/// 下载、解析和保存商品期货交易所数据。推荐命令：
-/// * -e czce -a：下载郑州交易所所有合约数据
-/// * -e dce -k C：下载大连交易所玉米合约数据
+#[doc = "\
+下载、解析和保存商品期货交易所数据。基本命令：
+
+* -e czce -y 2010..2023：下载郑州交易所 2010 至 2022 年所有合约数据
+* -e dce -y 2022 -k C -k M：下载大连交易所玉米和豆粕两个品种的数据
+
+注意：
+1. `-e` 和 `-y` 用来指定交易所和年份，为必填项
+2. `k` 用于无法下载全部合约时指定品种，目前 dce （大连交易所）需要此参数来选择品种
+3. “品种” 不等于 “合约”\
+"]
 #[derive(argh::FromArgs, Debug)]
 pub struct Args {
-    /// 交易所。此参数只支持指定单个交易所，且输入的合约或品种必须都为这个交易所，如
-    /// `-e czce -k MA` 或 `-e czce -k MA -k V`
+    /// 交易所。此参数只支持指定单个交易所，且输入的合约或品种必须都为这个交易所。
     #[argh(option, short = 'e')]
     exchange: Exchange,
 
-    /// 年份：xxxx 年或者 xxxx..xxxx 年。如 `-y 2022` 或者等价的 `-y 2022..2023` （前开后闭）
+    /// 年份：xxxx 年或者 xxxx..xxxx 年。如 `-y 2022` 或者等价的 `-y 2022..2023`。
     #[argh(option, short = 'y')]
     year: Year,
 
-    /// 是否全部合约。默认为否，使用 `--all` 或 `-a` 下载所有合约（仅对支持的交易所有效）。比如
-    /// czce 支持一次性下载一年内所有合约，而 dce 不支持。
-    #[argh(switch, short = 'a')]
-    all: bool,
-
-    /// 品种代码。可指定多个。
+    /// 品种代码。可指定多个或者不指定（支持下载所有合约的交易所无需指定）。
     #[argh(option, short = 'k')]
     kind: Vec<Str>,
-    // /// 合约代码（一般为品种代码+交割月）。可指定多个。
-    // #[argh(option, short = 'c')]
-    // contract: Vec<Str>,
 }
 
 impl Args {
     fn check(&self) -> Result<()> {
         match self.exchange {
-            Exchange::dce if self.all => {
+            Exchange::dce if self.kind.is_empty() => {
                 Err("大连交易所 (dce) 不支持下载所有合约，请使用 -k 指定品种")?
             }
             _ => (),
@@ -42,7 +41,7 @@ impl Args {
     }
 
     pub fn run(self) -> Result<()> {
-        self.check()?;
+        return self.check();
 
         match self.year {
             Year::Single(y) => self.exchange.run(y)?,
