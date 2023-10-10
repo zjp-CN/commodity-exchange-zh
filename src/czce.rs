@@ -162,3 +162,25 @@ pub fn parse_txt(raw: &str, f: Option<impl FnMut(Data)>) -> Result<String> {
         .for_each(f);
     Ok(stripped)
 }
+
+#[test]
+fn test_clickhouse() -> Result<()> {
+    crate::util::init_test_log();
+    // let content = std::fs::read_to_string("../cache/郑州-ALLFUTURES2022.csv")?;
+    const SQL: &str = include_str!("./sql/czce.sql");
+    let mut cmd = std::process::Command::new("clickhouse-client");
+    cmd.args(["--multiquery", SQL]);
+    let cmd_string = format!("{cmd:?}");
+    let output = cmd.output()?;
+    if !output.status.success() {
+        return Err(format!(
+            "保存至 clickhouse 失败；运行 {cmd_string} 的结果为：\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    } else {
+        info!("成功将数据保存至 clickhouse");
+    }
+    Ok(())
+}
