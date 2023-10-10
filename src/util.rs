@@ -60,8 +60,8 @@ pub fn init_data() -> &'static Init {
     DATA.get_or_init(|| Init {
         cache_dir: cache_dir().unwrap(),
         regex_czce: Regex::new(",| ").unwrap(),
-        this_year: OffsetDateTime::now_local()
-            .unwrap()
+        this_year: OffsetDateTime::now_utc()
+            .to_offset(time::macros::offset!(+8))
             .year()
             .try_into()
             .unwrap(),
