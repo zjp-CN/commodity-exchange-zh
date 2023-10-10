@@ -32,7 +32,7 @@ impl Args {
     fn check(&self) -> Result<()> {
         match self.exchange {
             Exchange::dce if self.kind.is_empty() => {
-                Err("大连交易所 (dce) 不支持下载所有合约，请使用 -k 指定品种")?
+                bail!("大连交易所 (dce) 不支持下载所有合约，请使用 -k 指定品种");
             }
             _ => (),
         }

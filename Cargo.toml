@@ -16,7 +16,7 @@ serde = { version = "1", features = ["derive"] }
 regex = "1"
 time = { version = "0.3", features = ["parsing", "serde", "local-offset"] }
 csv = "1"
-
+color-eyre = "0.6"
 argh = { version = "0.1", optional = true }
 tabled = { version = "0.14", optional = true }
 

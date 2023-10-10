@@ -120,7 +120,7 @@ pub fn cache_dir() -> Result<PathBuf> {
             if matches!(err.kind(), ErrorKind::AlreadyExists) {
                 debug!("{CACHE} 已存在");
             } else {
-                return Err(format!("无法创建 {CACHE}，因为 {err:?}").into());
+                bail!("无法创建 {CACHE}，因为 {err:?}");
             }
         }
     }

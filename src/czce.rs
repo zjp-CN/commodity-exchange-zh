@@ -23,7 +23,7 @@ pub fn get_url(year: u16) -> Result<String> {
         2020.. if year <= this_year => {
             format!("http://www.czce.com.cn/cn/DFSStaticFiles/Future/{year}/FutureDataAllHistory/ALLFUTURES{year}.xls")
         }
-        _ => return Err(format!("{year} 必须在 2010..={this_year} 范围内").into()),
+        _ => bail!("{year} 必须在 2010..={this_year} 范围内"),
     };
     Ok(url)
 }
@@ -87,7 +87,7 @@ pub struct Data {
 pub fn run(year: u16) -> Result<()> {
     fetch_txt(year, |raw, fname| {
         let csv_content = parse_txt(raw, None::<fn(_) -> _>)?;
-        save_csv(&csv_content, &fname)?;
+        save_csv(&csv_content, fname)?;
         info!("来自【郑州交易所】的数据备注：{MEMO}");
         Ok(())
     })
@@ -105,7 +105,7 @@ pub fn fetch_txt(
         if unzipped.is_file() {
             let unzipped_path = unzipped
                 .enclosed_name()
-                .ok_or_else(|| format!("`{}` 无法转成 &Path", unzipped.name()))?;
+                .ok_or_else(|| eyre!("`{}` 无法转成 &Path", unzipped.name()))?;
             let size = unzipped.size();
             info!(
                 "{url} 获取的第 {i} 个文件：{} ({} => {})",
@@ -116,12 +116,12 @@ pub fn fetch_txt(
             let file_name = unzipped_path
                 .file_name()
                 .and_then(|fname| Some(format!("郑州-{}", fname.to_str()?)))
-                .ok_or_else(|| format!("无法从 {unzipped_path:?} 中获取文件名"))?;
+                .ok_or_else(|| eyre!("无法从 {unzipped_path:?} 中获取文件名"))?;
             let mut buf = Vec::with_capacity(size as usize);
             io::copy(&mut unzipped, &mut buf)?;
             handle_unzipped(std::str::from_utf8(&buf)?, file_name.into())?;
         } else {
-            return Err(format!("{} 还未实现解压成文件夹", unzipped.name()).into());
+            bail!("{} 还未实现解压成文件夹", unzipped.name());
         }
     }
     Ok(())
@@ -164,7 +164,8 @@ pub fn parse_txt(raw: &str, f: Option<impl FnMut(Data)>) -> Result<String> {
 }
 
 #[test]
-fn test_clickhouse() -> Result<()> {
+fn test_clickhouse() -> color_eyre::eyre::Result<()> {
+    color_eyre::install()?;
     crate::util::init_test_log();
     // let content = std::fs::read_to_string("../cache/郑州-ALLFUTURES2022.csv")?;
     const SQL: &str = include_str!("./sql/czce.sql");
@@ -173,12 +174,11 @@ fn test_clickhouse() -> Result<()> {
     let cmd_string = format!("{cmd:?}");
     let output = cmd.output()?;
     if !output.status.success() {
-        return Err(format!(
+        bail!(
             "保存至 clickhouse 失败；运行 {cmd_string} 的结果为：\nstdout:\n{}\nstderr:\n{}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
-        )
-        .into());
+        );
     } else {
         info!("成功将数据保存至 clickhouse");
     }
