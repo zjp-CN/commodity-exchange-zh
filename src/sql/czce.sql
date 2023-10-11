@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS qihuo.czce (
 ) ENGINE = ReplacingMergeTree
 PRIMARY KEY(date, code)
 ORDER BY (date, code);
-
+/*
 SET format_csv_delimiter = '|';
 INSERT INTO qihuo.czce FROM INFILE 'cache/郑州-ALLFUTURES2022.csv';
 SELECT count(*) FROM qihuo.czce;
+*/

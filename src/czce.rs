@@ -4,7 +4,11 @@ use crate::{
 };
 use bytesize::ByteSize;
 use serde::Deserialize;
-use std::{io, path::PathBuf};
+use std::{
+    io::{self, Write},
+    path::PathBuf,
+    process::{Command, Stdio},
+};
 use time::Date;
 
 const MEMO: &str = "自2020年1月1日起，成交量、持仓量、成交额、行权量均为单边计算";
@@ -164,23 +168,57 @@ pub fn parse_txt(raw: &str, f: Option<impl FnMut(Data)>) -> Result<String> {
 }
 
 #[test]
-fn test_clickhouse() -> color_eyre::eyre::Result<()> {
+fn test_clickhouse() -> Result<()> {
     color_eyre::install()?;
     crate::util::init_test_log();
-    // let content = std::fs::read_to_string("../cache/郑州-ALLFUTURES2022.csv")?;
+    let content = std::fs::read_to_string("cache/郑州-ALLFUTURES2022.csv")?;
     const SQL: &str = include_str!("./sql/czce.sql");
-    let mut cmd = std::process::Command::new("clickhouse-client");
-    cmd.args(["--multiquery", SQL]);
-    let cmd_string = format!("{cmd:?}");
-    let output = cmd.output()?;
-    if !output.status.success() {
-        bail!(
-            "保存至 clickhouse 失败；运行 {cmd_string} 的结果为：\nstdout:\n{}\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-    } else {
-        info!("成功将数据保存至 clickhouse");
-    }
+    clickhouse_execute(SQL)?;
+    const INSERT: &str = "SET format_csv_delimiter = '|'; INSERT INTO qihuo.czce FORMAT CSV";
+    clickhouse_insert(INSERT, content.as_bytes())?;
+    clickhouse_execute("SELECT count(*) FROM qihuo.czce")?;
     Ok(())
+}
+
+fn clickhouse_output(output: std::process::Output, cmd: String) -> Result<()> {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if output.status.success() {
+        info!(
+            "成功运行命令：{}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+            regex::Regex::new("\n")
+                .unwrap()
+                .find_iter(&cmd)
+                .nth(3)
+                .map(|cap| format!("{} ...\"", &cmd[..cap.start()]))
+                .unwrap_or(cmd)
+        );
+        Ok(())
+    } else {
+        bail!("{cmd} 运行失败\nstdout:\n{stdout}\nstderr:\n{stderr}")
+    }
+}
+
+pub fn clickhouse_execute(sql: &str) -> Result<()> {
+    const MULTI: &str = "--multiquery";
+    let mut cmd = Command::new("clickhouse-client");
+    cmd.args([MULTI, sql]);
+    let cmd_string = format!(r#"clickhouse-client "{MULTI}" "{sql}""#);
+    let output = cmd.output()?;
+    clickhouse_output(output, cmd_string)
+}
+
+pub fn clickhouse_insert(sql: &str, bytes: &[u8]) -> Result<()> {
+    const MULTI: &str = "--multiquery";
+    let mut cmd = Command::new("clickhouse-client");
+    cmd.stdin(Stdio::piped());
+    cmd.args([MULTI, sql]);
+    let cmd_string = format!(r#"clickhouse-client "{MULTI}" "{sql}""#);
+    let mut child = cmd.spawn()?;
+    if let Some(stdin) = child.stdin.as_mut() {
+        stdin.write_all(bytes)?;
+    } else {
+        bail!("无法打开 stdin 来传输 clickhouse 所需的数据");
+    }
+    clickhouse_output(child.wait_with_output()?, cmd_string)
 }
