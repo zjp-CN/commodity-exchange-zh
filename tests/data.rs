@@ -67,7 +67,7 @@ ORDER BY (date, code);
     clickhouse_execute(&sql)?;
 
     sql = format!("SET format_csv_delimiter = '|'; INSERT INTO {TABLE} FORMAT CSV");
-    clickhouse_insert(&sql, std::fs::File::open("cache/郑州-ALLFUTURES2022.csv")?)?;
+    clickhouse_insert(&sql, File::open("cache/郑州-ALLFUTURES2022.csv")?)?;
 
     sql = format!("SELECT count(*) FROM {TABLE}; DROP TABLE IF EXISTS {TABLE}");
     shot!(clickhouse_execute(&sql)?, @"47916");
