@@ -37,7 +37,9 @@ pub fn init_test_log() -> &'static Init {
         |_| LevelFilter::Off,
         |l| l.parse().unwrap_or(LevelFilter::Off),
     );
-    SimpleLogger::init(level, Config::default()).expect("logger initialization failed");
+    if SimpleLogger::init(level, Config::default()).is_err() {
+        error!("日志开启失败，或许已经设置了日志");
+    }
     init_data()
 }
 
