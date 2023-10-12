@@ -41,7 +41,7 @@ impl Args {
     }
 
     pub fn run(self) -> Result<()> {
-        return self.check();
+        self.check()?;
 
         match self.year {
             Year::Single(y) => self.exchange.run(y)?,

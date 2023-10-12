@@ -25,7 +25,7 @@ pub fn get_url(year: u16) -> Result<String> {
             format!("http://www.czce.com.cn/cn/DFSStaticFiles/Future/{year}/FutureDataHistory.zip")
         }
         2020.. if year <= this_year => {
-            format!("http://www.czce.com.cn/cn/DFSStaticFiles/Future/{year}/FutureDataAllHistory/ALLFUTURES{year}.xls")
+            format!("http://www.czce.com.cn/cn/DFSStaticFiles/Future/{year}/ALLFUTURES{year}.zip")
         }
         _ => bail!("{year} 必须在 2010..={this_year} 范围内"),
     };
@@ -91,7 +91,30 @@ pub struct Data {
 pub fn run(year: u16) -> Result<()> {
     fetch_txt(year, |raw, fname| {
         let csv_content = parse_txt(raw, None::<fn(_) -> _>)?;
-        save_csv(&csv_content, fname)?;
+        std::thread::scope(|s| {
+            let task1 = s.spawn(|| save_csv(&csv_content, fname));
+            let task2 = s.spawn(|| {
+                clickhouse_execute(include_str!("./sql/czce.sql"))?;
+                const TABLE: &str = "qihuo.czce";
+                let count = format!("SELECT count(*) FROM {TABLE}");
+                info!("{TABLE} 现有数据 {} 条", clickhouse_execute(&count)?.trim());
+                info!("插入\n{}", &csv_content[..100]);
+                let sql = format!("SET format_csv_delimiter = '|'; INSERT INTO {TABLE} FORMAT CSV");
+                clickhouse_insert(&sql, io::Cursor::new(&csv_content))?;
+                info!("{TABLE} 现有数据 {} 条", clickhouse_execute(&count)?.trim());
+                Ok::<_, color_eyre::eyre::Report>(())
+            });
+
+            match task1.join() {
+                Ok(res) => _ = res?,
+                Err(err) => bail!("save_csv 运行失败：{err:?}"),
+            }
+            match task2.join() {
+                Ok(res) => res?,
+                Err(err) => bail!("保存到 clickhouse 运行失败：{err:?}"),
+            }
+            Ok(())
+        })?;
         info!("来自【郑州交易所】的数据备注：{MEMO}");
         Ok(())
     })
@@ -138,11 +161,11 @@ pub fn parse_txt(raw: &str, f: Option<impl FnMut(Data)>) -> Result<String> {
         info!("{head}");
         start += head.len();
     }
-    start += 1;
+    start += 2;
     // 删除所有数字千位分隔符和单元格内的空格
     let stripped = init_data()
         .regex_czce
-        .replace_all(&raw[start..], "")
+        .replace_all(raw[start..].trim(), "")
         .into_owned();
     let Some(f) = f else { return Ok(stripped) };
     let mut reader = csv::ReaderBuilder::new()
@@ -195,7 +218,8 @@ pub fn clickhouse_execute(sql: &str) -> Result<String> {
     clickhouse_output(output, cmd_string)
 }
 
-pub fn clickhouse_insert(sql: &str, mut bytes: impl io::Read) -> Result<()> {
+pub fn clickhouse_insert(sql: &str, reader: impl io::Read + io::Seek) -> Result<()> {
+    use io::Seek;
     const MULTI: &str = "--multiquery";
     let mut cmd = Command::new("clickhouse-client");
     cmd.stdin(Stdio::piped());
@@ -203,7 +227,11 @@ pub fn clickhouse_insert(sql: &str, mut bytes: impl io::Read) -> Result<()> {
     let cmd_string = format!(r#"clickhouse-client "{MULTI}" "{sql}""#);
     let mut child = cmd.spawn()?;
     if let Some(stdin) = child.stdin.as_mut() {
-        io::copy(&mut bytes, stdin)?;
+        let mut buf = io::BufReader::new(reader);
+        let start = buf.stream_position().unwrap_or(0);
+        io::copy(&mut buf, stdin)?;
+        let end = buf.stream_position().unwrap_or(start);
+        info!("成功向 clickhouse 插入了 {} 数据", ByteSize(end - start));
     } else {
         bail!("无法打开 stdin 来传输 clickhouse 所需的数据");
     }
