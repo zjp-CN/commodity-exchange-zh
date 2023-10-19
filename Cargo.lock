@@ -175,6 +175,7 @@ dependencies = [
  "color-eyre",
  "compact_str",
  "csv",
+ "encoding_rs",
  "insta",
  "log",
  "minreq",

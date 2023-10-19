@@ -89,20 +89,38 @@ pub struct Data {
 }
 
 pub fn run(year: u16) -> Result<()> {
-    fetch_txt(year, |raw, fname| {
+    fetch_txt(year, |raw, fname, status| {
         let csv_content = parse_txt(raw, None::<fn(_) -> _>)?;
         std::thread::scope(|s| {
             let task1 = s.spawn(|| save_csv(&csv_content, fname));
-            let task2 = s.spawn(|| {
+            let task2 = s.spawn(|| -> Result<()> {
                 clickhouse_execute(include_str!("./sql/czce.sql"))?;
                 const TABLE: &str = "qihuo.czce";
-                let count = format!("SELECT count(*) FROM {TABLE}");
-                info!("{TABLE} 现有数据 {} 条", clickhouse_execute(&count)?.trim());
+                let sql_count = format!("SELECT count(*) FROM {TABLE}");
+                let count_old = clickhouse_execute(&sql_count)?;
+                info!("{TABLE} 现有数据 {count_old} 条");
                 info!("插入\n{}", &csv_content[..100]);
-                let sql = format!("SET format_csv_delimiter = '|'; INSERT INTO {TABLE} FORMAT CSV");
-                clickhouse_insert(&sql, io::Cursor::new(&csv_content))?;
-                info!("{TABLE} 现有数据 {} 条", clickhouse_execute(&count)?.trim());
-                Ok::<_, color_eyre::eyre::Report>(())
+                let sql_insert_csv =
+                    format!("SET format_csv_delimiter = '|'; INSERT INTO {TABLE} FORMAT CSV");
+                clickhouse_insert(&sql_insert_csv, io::Cursor::new(&csv_content))?;
+                let count_new = clickhouse_execute(&sql_count)?;
+                let added = count_new
+                    .parse::<u64>()
+                    .ok()
+                    .and_then(|x| {
+                        x.checked_sub(count_old.parse::<u64>().ok()?)
+                            .map(|r| r.to_string())
+                    })
+                    .unwrap_or_default();
+                info!("{TABLE} 现有数据 {count_new} 条（增加了 {added} 条）");
+                if status.change_0_to_null {
+                    clickhouse_execute(&format!(
+                        "ALTER TABLE qihuo.czce UPDATE dsp=Null \
+                         WHERE dsp==0 AND year(date)=={year};"
+                    ))?;
+                    info!("{TABLE} 由于源数据不规范，需要将 dsp 为 0 的数据修改为 Null");
+                }
+                Ok(())
             });
 
             match task1.join() {
@@ -115,14 +133,19 @@ pub fn run(year: u16) -> Result<()> {
             }
             Ok(())
         })?;
-        info!("来自【郑州交易所】的数据备注：{MEMO}");
+        info!("成功获取 {year} 年的数据\n来自【郑州交易所】的数据备注：{MEMO}");
         Ok(())
     })
 }
 
+#[derive(Default)]
+pub struct Status {
+    change_0_to_null: bool,
+}
+
 pub fn fetch_txt(
     year: u16,
-    mut handle_unzipped: impl FnMut(&str, PathBuf) -> Result<()>,
+    mut handle_unzipped: impl FnMut(&str, PathBuf, &Status) -> Result<()>,
 ) -> Result<()> {
     let url = get_url(year)?;
     let fetched = fetch(&url)?;
@@ -134,9 +157,9 @@ pub fn fetch_txt(
                 .enclosed_name()
                 .ok_or_else(|| eyre!("`{}` 无法转成 &Path", unzipped.name()))?;
             let size = unzipped.size();
+            let unzipped_path_display = unzipped_path.display().to_string();
             info!(
-                "{url} 获取的第 {i} 个文件：{} ({} => {})",
-                unzipped_path.display(),
+                "{url} 获取的第 {i} 个文件：{unzipped_path_display} ({} => {})",
                 ByteSize(unzipped.compressed_size()),
                 ByteSize(size),
             );
@@ -146,7 +169,30 @@ pub fn fetch_txt(
                 .ok_or_else(|| eyre!("无法从 {unzipped_path:?} 中获取文件名"))?;
             let mut buf = Vec::with_capacity(size as usize);
             io::copy(&mut unzipped, &mut buf)?;
-            handle_unzipped(std::str::from_utf8(&buf)?, file_name.into())?;
+            let mut status = Status::default();
+            let content = match std::str::from_utf8(&buf) {
+                Ok(s) => s.into(),
+                Err(_) => {
+                    let gbk = encoding_rs::GBK;
+                    info!("{unzipped_path_display} 不是 UTF8 编码的，尝试使用 GBK 解码");
+                    let (cow, encoding, err) = gbk.decode(&buf);
+                    if err {
+                        bail!("{unzipped_path_display} 不是 GBK 编码的，需要手动确认编码");
+                    } else if encoding != gbk {
+                        bail!("{unzipped_path_display} GBK/{encoding:?} 解码失败");
+                    }
+                    // NOTE: GBK 编码的表头与现有 UTF8 的表头和内容不一致：
+                    // * 空盘量（GBK） -> 持仓量（UTF8)
+                    // * 换行符是 CRLF -> LF
+                    // * 换行符前为 `交割结算价|` -> `交割结算价`
+                    // * 交割结算价的若无实际数据则为 0 -> 空
+                    //  （从而 SQL 需要把 dsp 为 0 替换成 NULL）
+                    // TODO: 该函数返回一个状态来在录入当年数据后替换 dsp 的 SQL 语句
+                    status.change_0_to_null = true;
+                    cow
+                }
+            };
+            handle_unzipped(&content, file_name.into(), &status)?;
         } else {
             bail!("{} 还未实现解压成文件夹", unzipped.name());
         }
@@ -192,18 +238,37 @@ pub fn parse_txt(raw: &str, f: Option<impl FnMut(Data)>) -> Result<String> {
 
 fn clickhouse_output(output: Output, cmd: String) -> Result<String> {
     let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = stdout.trim();
     let stderr = String::from_utf8_lossy(&output.stderr);
+    let stderr = stderr.trim();
     if output.status.success() {
+        struct StdOutErr<'s> {
+            stdout: &'s str,
+            stderr: &'s str,
+        }
+        impl std::fmt::Display for StdOutErr<'_> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let StdOutErr { stdout, stderr } = self;
+                if !stdout.is_empty() {
+                    writeln!(f, "stdout:\n{stdout}")?;
+                }
+                if !stderr.is_empty() {
+                    write!(f, "stderr:\n{stderr}")?;
+                }
+                Ok(())
+            }
+        }
         info!(
-            "成功运行命令：{}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+            "成功运行命令：{}\n{}",
             regex::Regex::new("\n")
                 .unwrap()
                 .find_iter(&cmd)
                 .nth(3)
                 .map(|cap| format!("{} ...\"", &cmd[..cap.start()]))
-                .unwrap_or(cmd)
+                .unwrap_or(cmd),
+            StdOutErr { stdout, stderr }
         );
-        Ok(stdout.into_owned())
+        Ok(stdout.to_owned())
     } else {
         bail!("{cmd} 运行失败\nstdout:\n{stdout}\nstderr:\n{stderr}")
     }
