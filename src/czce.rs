@@ -103,14 +103,14 @@ pub fn run(year: u16) -> Result<()> {
                 let sql_insert_csv =
                     format!("SET format_csv_delimiter = '|'; INSERT INTO {TABLE} FORMAT CSV");
                 clickhouse_insert(&sql_insert_csv, io::Cursor::new(&csv_content))?;
+                clickhouse_execute(&format!("OPTIMIZE TABLE {TABLE} DEDUPLICATE BY date, code"))?;
+                info!("{TABLE} 已去重");
                 let count_new = clickhouse_execute(&sql_count)?;
                 let added = count_new
                     .parse::<u64>()
                     .ok()
-                    .and_then(|x| {
-                        x.checked_sub(count_old.parse::<u64>().ok()?)
-                            .map(|r| r.to_string())
-                    })
+                    .zip(count_old.parse::<u64>().ok())
+                    .and_then(|(new, old)| new.checked_sub(old).map(|r| r.to_string()))
                     .unwrap_or_default();
                 info!("{TABLE} 现有数据 {count_new} 条（增加了 {added} 条）");
                 if status.change_0_to_null {
