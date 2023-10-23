@@ -190,10 +190,9 @@ impl Data {
 }
 
 pub fn as_str(cell: &DataType) -> Result<Str> {
-    Ok(cell
-        .get_string()
-        .with_context(|| format!("{cell:?} 无法读取为 &str"))?
-        .into())
+    cell.get_string()
+        .map(Str::from)
+        .with_context(|| format!("{cell:?} 无法读取为 &str"))
 }
 
 pub fn as_date(cell: &DataType) -> Result<Date> {
@@ -305,6 +304,8 @@ pub fn parse_xslx_header(header: &[DataType]) -> Result<Vec<usize>> {
         }
     }
     ensure!(pos.len() == LEN, "xlsx 的表头有效列不足 {LEN}：{pos:?}");
+    // 通过 HashMap 确定所有字段在第几列，并按字段顺序解析
+    // 所以 Field 的变体顺序与 Data 的字段顺序必须一致
     let mut field_pos: Vec<_> = pos.into_iter().collect();
     field_pos.sort_by_key(|v| v.0);
     Ok(field_pos.into_iter().map(|v| v.1).collect())
