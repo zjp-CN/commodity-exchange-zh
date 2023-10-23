@@ -1,12 +1,13 @@
 use commodity_exchange_zh::{
     czce::{clickhouse_execute, clickhouse_insert, parse_txt},
-    util, Result,
+    dce::{parse_download_links, DownloadLink, DOWNLOAD_LINKS},
+    ensure, util, Result,
 };
 use insta::assert_display_snapshot as shot;
 use regex::Regex;
 use std::{
     fs::File,
-    io::{BufReader, Read},
+    io::{BufReader, Read, Write},
 };
 use tabled::Table;
 
@@ -72,5 +73,63 @@ ORDER BY (date, code);
     sql = format!("SELECT count(*) FROM {TABLE}; DROP TABLE IF EXISTS {TABLE}");
     shot!(clickhouse_execute(&sql)?, @"47916");
 
+    Ok(())
+}
+
+// <ul class="cate_sel clearfix" opentype="page">
+//  <li><label><input type="radio" name="hisItem" rel="/dalianshangpin/resource/cms/article/6301842/6302967/2022012410265645980.xlsx">生猪</label></li>
+#[test]
+fn test_dce_html() -> Result<()> {
+    let html = include_str!("dce.html");
+    let mut data = parse_download_links(html)?;
+    data.sort();
+    let mut years: Vec<_> = data.iter().map(|v| v.year).collect();
+    years.dedup();
+    shot!(years.len(), @"17"); // 年数
+    shot!(format!("{:?}", years), @"[2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022]");
+    shot!(data.len(), @"260"); // 链接数量
+    shot!("dce-downloadlink", Table::new(&data));
+
+    // 序列化测试
+    let config = bincode::config::standard();
+    let buf = bincode::encode_to_vec(&data, config)?;
+    ensure!(
+        buf == DOWNLOAD_LINKS,
+        "测试目录下的 dce.bincode 字节与库中的不一致"
+    );
+    const FILE: &str = "dce.bincode";
+    let file = std::path::Path::new("tests").join(FILE);
+    let buf_size = buf.len();
+    if let Ok(mut dce) = File::open(&file) {
+        let mut buf_file = Vec::with_capacity(buf_size);
+        ensure!(
+            dce.read_to_end(&mut buf_file)? == buf_size,
+            "最新数据与 dce.bincode 数据长度不一致"
+        );
+        ensure!(
+            buf_file == buf,
+            "测试解析的序列化结果与 dce.bincode 文件不一致"
+        );
+    } else {
+        // 如果无 dec.bincode 文件，则生成
+        File::create(&file)?.write_all(&buf)?;
+        println!(
+            "已写入 {} ({})",
+            file.display(),
+            bytesize::ByteSize(buf_size as u64)
+        );
+    }
+
+    // 反序列化测试
+    let (lib_data, size) =
+        bincode::decode_from_slice::<Vec<DownloadLink>, _>(DOWNLOAD_LINKS, config)?;
+    ensure!(
+        lib_data == data,
+        "测试解析的 dce.bincode 与库中反序列化的 Vec<DownloadLink> 不一致"
+    );
+    ensure!(
+        buf_size == size,
+        "测试目录下的 dce.bincode 大小与库中的不一致"
+    );
     Ok(())
 }

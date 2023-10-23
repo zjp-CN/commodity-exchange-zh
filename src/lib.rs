@@ -22,7 +22,7 @@ mod macros {
 /// 郑州商品交易所
 pub mod czce;
 /// 大连商品交易所
-mod dce;
+pub mod dce;
 
 /// 辅助
 pub mod util;
