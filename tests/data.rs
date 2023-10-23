@@ -1,6 +1,7 @@
+use calamine::Reader;
 use commodity_exchange_zh::{
     czce::{clickhouse_execute, clickhouse_insert, parse_txt},
-    dce::{parse_download_links, DownloadLink, DOWNLOAD_LINKS},
+    dce::{parse_download_links, read_dce_xlsx, DownloadLink, DOWNLOAD_LINKS},
     ensure, util, Result,
 };
 use insta::assert_display_snapshot as shot;
@@ -131,5 +132,24 @@ fn test_dce_html() -> Result<()> {
         buf_size == size,
         "测试目录下的 dce.bincode 大小与库中的不一致"
     );
+    Ok(())
+}
+
+#[test]
+fn dce_xlsx() -> Result<()> {
+    let file = "cache/v.xlsx";
+    let mut wb: calamine::Xlsx<_> = calamine::open_workbook(file)?;
+    let end_row = wb.worksheet_range_at(0).unwrap()?.end().unwrap().0 as usize;
+    let mut table = Vec::with_capacity(end_row);
+    read_dce_xlsx(wb, |data| {
+        table.push(data);
+        Ok(())
+    })?;
+    let len = table.len();
+    ensure!(
+        end_row == len,
+        "{file} 总共有 {end_row} 条数据，但只解析了 {len} 条"
+    );
+    shot!("dce-v-2022", Table::new(table));
     Ok(())
 }
