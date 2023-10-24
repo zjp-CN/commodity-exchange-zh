@@ -1,7 +1,7 @@
 use calamine::Reader;
 use commodity_exchange_zh::{
     czce::{clickhouse_execute, clickhouse_insert, parse_txt},
-    dce::{parse_download_links, read_dce_xlsx, DownloadLink, DOWNLOAD_LINKS},
+    dce::{parse_download_links, read_dce_xlsx, DownloadLinks, DOWNLOAD_LINKS},
     ensure, util, Result,
 };
 use insta::assert_display_snapshot as shot;
@@ -82,14 +82,13 @@ ORDER BY (date, code);
 #[test]
 fn test_dce_html() -> Result<()> {
     let html = include_str!("dce.html");
-    let mut data = parse_download_links(html)?;
-    data.sort();
-    let mut years: Vec<_> = data.iter().map(|v| v.year).collect();
+    let data = parse_download_links(html)?;
+    let mut years: Vec<_> = data.iter().map(|(k, _)| k.year).collect();
     years.dedup();
     shot!(years.len(), @"17"); // 年数
     shot!(format!("{:?}", years), @"[2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022]");
     shot!(data.len(), @"260"); // 链接数量
-    shot!("dce-downloadlink", Table::new(&data));
+    shot!("dce-downloadlink", Table::new(data.iter()));
 
     // 序列化测试
     let config = bincode::config::standard();
@@ -122,8 +121,7 @@ fn test_dce_html() -> Result<()> {
     }
 
     // 反序列化测试
-    let (lib_data, size) =
-        bincode::decode_from_slice::<Vec<DownloadLink>, _>(DOWNLOAD_LINKS, config)?;
+    let (lib_data, size) = bincode::decode_from_slice::<DownloadLinks, _>(DOWNLOAD_LINKS, config)?;
     ensure!(
         lib_data == data,
         "测试解析的 dce.bincode 与库中反序列化的 Vec<DownloadLink> 不一致"

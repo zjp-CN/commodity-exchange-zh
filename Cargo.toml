@@ -23,6 +23,7 @@ encoding_rs = "0.8"
 tl = "0.7"
 inquire = "0.6"
 bincode = { version = "2.0.0-rc.3", features = ["serde"] }
+indexmap = { version = "2", features = ["serde"] }
 
 [dev-dependencies]
 insta = "1"

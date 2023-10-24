@@ -1,7 +1,9 @@
-use crate::{Result, Str};
+use crate::{util::init_data, Result, Str};
 use bincode::{Decode, Encode};
 use calamine::{DataType, Reader};
 use color_eyre::eyre::{Context, ContextCompat};
+use indexmap::{Equivalent, IndexMap};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     io::{Read, Seek},
@@ -9,17 +11,50 @@ use std::{
 use time::Date;
 
 pub static DOWNLOAD_LINKS: &[u8] = include_bytes!("../tests/dce.bincode");
+pub const URL_PREFIX: &str = "http://www.dce.com.cn";
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Decode, Encode)]
-#[cfg_attr(feature = "tabled", derive(tabled::Tabled))]
-pub struct DownloadLink {
-    pub year: u16,
-    #[bincode(with_serde)]
-    pub name: Str,
-    pub link: String,
+#[derive(Debug, Decode, Encode, PartialEq, Eq)]
+pub struct DownloadLinks(#[bincode(with_serde)] IndexMap<Key, String>);
+
+impl DownloadLinks {
+    pub fn new_static() -> Result<DownloadLinks> {
+        let d = bincode::decode_from_slice::<DownloadLinks, _>(
+            DOWNLOAD_LINKS,
+            bincode::config::standard(),
+        )?;
+        Ok(d.0)
+    }
+    pub fn iter(&self) -> impl Iterator<Item = (&Key, &String)> {
+        self.0.iter()
+    }
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
 }
 
-pub fn parse_download_links(html: &str) -> Result<Vec<DownloadLink>> {
+#[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "tabled", derive(tabled::Tabled))]
+pub struct Key {
+    pub year: u16,
+    pub name: Str,
+}
+
+impl Equivalent<Key> for (u16, &str) {
+    fn equivalent(&self, key: &Key) -> bool {
+        self.0 == key.year && self.1 == key.name
+    }
+}
+
+pub fn get_download_link(year: u16, name: &str) -> Result<String> {
+    let index_map = &init_data().links_dce.0;
+    let postfix = index_map
+        .get(&(year, name))
+        .with_context(|| format!("无法找到 {year} 年 {name} 品种的下载链接"))?;
+    Ok(format!("{URL_PREFIX}{postfix}"))
+}
+
+pub fn parse_download_links(html: &str) -> Result<DownloadLinks> {
     fn query_err(s: &str) -> String {
         format!("无法根据 `{s}` 搜索到内容")
     }
@@ -103,16 +138,22 @@ pub fn parse_download_links(html: &str) -> Result<Vec<DownloadLink>> {
         data.push((year, v?));
     }
 
-    Ok(data
+    let mut index_map: IndexMap<_, _> = data
         .into_iter()
         .flat_map(|(year, v)| {
-            v.into_iter().map(move |(link, name)| DownloadLink {
-                year,
-                name: name.into(),
-                link: link.into(),
+            v.into_iter().map(move |(link, name)| {
+                (
+                    Key {
+                        year,
+                        name: name.into(),
+                    },
+                    link.into_owned(),
+                )
             })
         })
-        .collect())
+        .collect();
+    index_map.sort_keys();
+    Ok(DownloadLinks(index_map))
 }
 
 /// 读取 xlsx 文件，并处理解析过的每行数据

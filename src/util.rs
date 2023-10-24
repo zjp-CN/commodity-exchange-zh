@@ -1,4 +1,4 @@
-use crate::Result;
+use crate::{dce, Result};
 use bytesize::ByteSize;
 use regex::Regex;
 use serde::{Deserialize, Deserializer};
@@ -55,6 +55,7 @@ pub struct Init {
     pub cache_dir: PathBuf,
     pub regex_czce: Regex,
     pub this_year: u16,
+    pub links_dce: dce::DownloadLinks,
 }
 
 pub fn init_data() -> &'static Init {
@@ -67,6 +68,7 @@ pub fn init_data() -> &'static Init {
             .year()
             .try_into()
             .unwrap(),
+        links_dce: dce::DownloadLinks::new_static().unwrap(),
     })
 }
 

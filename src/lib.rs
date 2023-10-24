@@ -40,9 +40,10 @@ pub enum Exchange {
 impl Exchange {
     pub fn run(self, year: u16) -> Result<()> {
         match self {
-            Exchange::czce => czce::run(year),
-            Exchange::dce => todo!(),
+            Exchange::czce => czce::run(year)?,
+            Exchange::dce => eprintln!("{:?}", util::init_data().links_dce),
         }
+        Ok(())
     }
 }
 
