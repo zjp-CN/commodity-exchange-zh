@@ -1,6 +1,6 @@
 use super::{get_download_link, Key, Result};
 use crate::util::init_data;
-use inquire::MultiSelect;
+use inquire::{InquireError, MultiSelect};
 
 pub fn select(with_options: bool) -> Result<()> {
     let year_name = init_data().links_dce.iter().map(|(k, _)| k);
@@ -10,10 +10,16 @@ pub fn select(with_options: bool) -> Result<()> {
         year_name.filter(|k| !k.name.contains("期权")).collect()
     };
     let msg = format!(
-        "请从大连交易所下的 {} 条链接中选择获取的 (年份, 品种)",
+        "请从大连交易所的 {} 条链接中选择 (年份, 品种)",
         options.len()
     );
-    for Key { year, name } in MultiSelect::new(&msg, options).prompt()? {
+    let keys = match MultiSelect::new(&msg, options).prompt() {
+        Ok(keys) => keys,
+        // <Ctrl-c> or <Esc>
+        Err(InquireError::OperationInterrupted | InquireError::OperationCanceled) => return Ok(()),
+        Err(err) => bail!("交互出现问题：{err:?}"),
+    };
+    for Key { year, name } in keys {
         println!("{}", get_download_link(*year, name)?);
     }
     Ok(())

@@ -60,7 +60,7 @@ impl Args {
             Exchange::Czce(Czce { year }) => year.for_each_year(czce::run)?,
             Exchange::Dce(d) => {
                 if d.select {
-                    dce::select::select(d.with_options)?;
+                    dce::select(d.with_options)?;
                 } else if let Some(year) = d.year {
                     year.for_each_year(|y| {
                         for kind in &d.kinds {

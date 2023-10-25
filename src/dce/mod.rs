@@ -9,7 +9,8 @@ use time::Date;
 
 mod parse;
 pub use parse::parse_download_links;
-pub mod select;
+mod select;
+pub use select::select;
 
 pub static DOWNLOAD_LINKS: &[u8] = include_bytes!("../../tests/dce.bincode");
 pub const URL_PREFIX: &str = "http://www.dce.com.cn";
