@@ -92,7 +92,7 @@ pub fn run(year: u16) -> Result<()> {
     fetch_txt(year, |raw, fname, status| {
         let csv_content = parse_txt(raw, None::<fn(_) -> _>)?;
         std::thread::scope(|s| {
-            let task1 = s.spawn(|| save_csv(&csv_content, fname));
+            let task1 = s.spawn(|| save_csv(csv_content.trim().as_bytes(), fname));
             let task2 = s.spawn(|| -> Result<()> {
                 clickhouse_execute(include_str!("./sql/czce.sql"))?;
                 const TABLE: &str = "qihuo.czce";

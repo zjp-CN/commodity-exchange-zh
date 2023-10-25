@@ -1,5 +1,9 @@
-use crate::{util::init_data, Result, Str};
+use crate::{
+    util::{fetch, init_data, save_csv},
+    Result, Str,
+};
 use bincode::{Decode, Encode};
+use bytesize::ByteSize;
 use calamine::{DataType, Reader};
 use color_eyre::eyre::{Context, ContextCompat};
 use indexmap::{Equivalent, IndexMap};
@@ -82,14 +86,44 @@ pub fn read_dce_xlsx<R: Read + Seek>(
     Ok(())
 }
 
-#[derive(Debug, Encode)]
+pub fn run(year: u16, name: &str) -> Result<()> {
+    let link = get_download_link(year, name)?;
+    let (xlsx, len) = if link.ends_with(".xlsx") {
+        let raw = fetch(&link)?;
+        let len = raw.get_ref().len();
+        info!("从 {link} 获取了 xlsx 文件 ({})", ByteSize(len as _));
+        (raw, len)
+    } else if link.ends_with(".zip") {
+        let raw = fetch(&link)?;
+        todo!()
+    } else {
+        bail!("暂时无法处理 {link}，因为只处理 xlsx 或者 zip 文件");
+    };
+    let mut writer = csv::WriterBuilder::new()
+        .has_headers(false)
+        .buffer_capacity(len)
+        .from_writer(Vec::with_capacity(len));
+    read_dce_xlsx(calamine::Xlsx::new(xlsx)?, |data| {
+        writer.serialize(&data)?;
+        Ok(())
+    })?;
+    let fname = format!("{year}-{name}.csv");
+    let bytes = writer.get_ref();
+    save_csv(bytes, &fname)?;
+    info!(
+        "已写入 {}/{fname} ({})",
+        init_data().cache_dir.display(),
+        ByteSize(bytes.len() as _)
+    );
+    Ok(())
+}
+
+#[derive(Debug, Serialize)]
 #[cfg_attr(feature = "tabled", derive(tabled::Tabled))]
 pub struct Data {
     /// 合约代码
-    #[bincode(with_serde)]
     pub code: Str,
     /// 交易日期
-    #[bincode(with_serde)]
     pub date: Date,
     /// 昨结算
     pub prev: f32,

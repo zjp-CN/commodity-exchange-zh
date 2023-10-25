@@ -131,13 +131,13 @@ pub fn cache_dir() -> Result<PathBuf> {
     Ok(dir)
 }
 
-pub fn save_csv(s: &str, filename: impl AsRef<Path>) -> Result<PathBuf> {
+pub fn save_csv(s: &[u8], filename: impl AsRef<Path>) -> Result<PathBuf> {
     let fname = filename.as_ref();
     let mut path = init_data().cache_dir.join(fname);
     if !path.set_extension("csv") {
         error!("{} 无法设置 csv 文件名后缀", fname.display());
     }
-    File::create(&path)?.write_all(s.trim().as_bytes())?;
+    File::create(&path)?.write_all(s)?;
     info!("{} 已被写入", path.display());
     Ok(path)
 }
