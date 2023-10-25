@@ -59,7 +59,7 @@ impl Equivalent<Key> for (u16, &str) {
     }
 }
 
-pub fn get_download_link(year: u16, name: &str) -> Result<String> {
+pub fn get_url(year: u16, name: &str) -> Result<String> {
     let index_map = &init_data().links_dce.0;
     let postfix = index_map
         .get(&(year, name))
@@ -68,7 +68,7 @@ pub fn get_download_link(year: u16, name: &str) -> Result<String> {
 }
 
 /// 读取 xlsx 文件，并处理解析过的每行数据
-pub fn read_dce_xlsx<R: Read + Seek>(
+pub fn read_xlsx<R: Read + Seek>(
     mut wb: calamine::Xlsx<R>,
     mut handle: impl FnMut(Data) -> Result<()>,
 ) -> Result<()> {
@@ -87,7 +87,7 @@ pub fn read_dce_xlsx<R: Read + Seek>(
 }
 
 pub fn run(year: u16, name: &str) -> Result<()> {
-    let link = get_download_link(year, name)?;
+    let link = get_url(year, name)?;
     let (xlsx, len) = if link.ends_with(".xlsx") {
         let raw = fetch(&link)?;
         let len = raw.get_ref().len();
@@ -97,13 +97,13 @@ pub fn run(year: u16, name: &str) -> Result<()> {
         let raw = fetch(&link)?;
         todo!()
     } else {
-        bail!("暂时无法处理 {link}，因为只处理 xlsx 或者 zip 文件");
+        bail!("暂时无法处理 {link}，因为只支持 xlsx 或者 zip 文件");
     };
     let mut writer = csv::WriterBuilder::new()
         .has_headers(false)
         .buffer_capacity(len)
         .from_writer(Vec::with_capacity(len));
-    read_dce_xlsx(calamine::Xlsx::new(xlsx)?, |data| {
+    read_xlsx(calamine::Xlsx::new(xlsx)?, |data| {
         writer.serialize(&data)?;
         Ok(())
     })?;

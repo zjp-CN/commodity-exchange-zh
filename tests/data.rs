@@ -1,7 +1,7 @@
 use calamine::Reader;
 use commodity_exchange_zh::{
     czce::{clickhouse_execute, clickhouse_insert, parse_txt},
-    dce::{parse_download_links, read_dce_xlsx, DownloadLinks, DOWNLOAD_LINKS},
+    dce::{parse_download_links, read_xlsx, DownloadLinks, DOWNLOAD_LINKS},
     ensure, util, Result,
 };
 use insta::assert_display_snapshot as shot;
@@ -139,7 +139,7 @@ fn dce_xlsx() -> Result<()> {
     let mut wb: calamine::Xlsx<_> = calamine::open_workbook(file)?;
     let end_row = wb.worksheet_range_at(0).unwrap()?.end().unwrap().0 as usize;
     let mut table = Vec::with_capacity(end_row);
-    read_dce_xlsx(wb, |data| {
+    read_xlsx(wb, |data| {
         table.push(data);
         Ok(())
     })?;

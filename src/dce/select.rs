@@ -1,4 +1,4 @@
-use super::{get_download_link, Key, Result};
+use super::{get_url, Key, Result};
 use crate::util::init_data;
 use inquire::{InquireError, MultiSelect};
 
@@ -20,7 +20,7 @@ pub fn select(with_options: bool) -> Result<()> {
         Err(err) => bail!("交互出现问题：{err:?}"),
     };
     for Key { year, name } in keys {
-        println!("{}", get_download_link(*year, name)?);
+        println!("{}", get_url(*year, name)?);
     }
     Ok(())
 }

@@ -64,7 +64,7 @@ impl Args {
                 } else if let Some(year) = d.year {
                     year.for_each_year(|y| {
                         for kind in &d.kinds {
-                            let link = dce::get_download_link(y, kind)?;
+                            let link = dce::get_url(y, kind)?;
                             info!("{link}");
                         }
                         Ok(())
