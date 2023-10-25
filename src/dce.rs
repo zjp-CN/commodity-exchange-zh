@@ -88,7 +88,7 @@ pub fn parse_download_links(html: &str) -> Result<DownloadLinks> {
         uls_len == options_len,
         "年份数量 {options_len} 与列表数量 {uls_len} 不相等，需检查 HTML"
     );
-    let mut data = Vec::with_capacity(options_len);
+    let mut data = IndexMap::with_capacity(options_len);
     for (option, ul) in options.into_iter().zip(uls) {
         let year_str = option
             .get(parser)
@@ -110,50 +110,36 @@ pub fn parse_download_links(html: &str) -> Result<DownloadLinks> {
             .with_context(|| as_tag_err(UL))?
             .query_selector(parser, LABEL)
             .with_context(|| query_err(LABEL))?;
-        let v: Result<Vec<_>> = labels
-            .map(|label| -> Result<_> {
-                let label = label.get(parser).with_context(|| get_err(LABEL))?;
-                let input = label
-                    .as_tag()
-                    .with_context(|| as_tag_err(LABEL))?
-                    .query_selector(parser, INPUT)
-                    .with_context(|| query_err(INPUT))?
-                    .next()
-                    .with_context(|| query_err(INPUT))?
-                    .get(parser)
-                    .with_context(|| get_err(INPUT))?
-                    .as_tag()
-                    .with_context(|| as_tag_err(INPUT))?;
-                Ok((
-                    input
-                        .attributes()
-                        .get(REL)
-                        .with_context(|| get_err(REL))?
-                        .with_context(|| attribute_err(REL))?
-                        .as_utf8_str(),
-                    label.inner_text(parser),
-                ))
-            })
-            .collect();
-        data.push((year, v?));
+        for label in labels {
+            let label = label.get(parser).with_context(|| get_err(LABEL))?;
+            let input = label
+                .as_tag()
+                .with_context(|| as_tag_err(LABEL))?
+                .query_selector(parser, INPUT)
+                .with_context(|| query_err(INPUT))?
+                .next()
+                .with_context(|| query_err(INPUT))?
+                .get(parser)
+                .with_context(|| get_err(INPUT))?
+                .as_tag()
+                .with_context(|| as_tag_err(INPUT))?;
+            data.insert(
+                Key {
+                    year,
+                    name: label.inner_text(parser).into(),
+                },
+                input
+                    .attributes()
+                    .get(REL)
+                    .with_context(|| get_err(REL))?
+                    .with_context(|| attribute_err(REL))?
+                    .as_utf8_str()
+                    .into_owned(),
+            );
+        }
     }
-
-    let mut index_map: IndexMap<_, _> = data
-        .into_iter()
-        .flat_map(|(year, v)| {
-            v.into_iter().map(move |(link, name)| {
-                (
-                    Key {
-                        year,
-                        name: name.into(),
-                    },
-                    link.into_owned(),
-                )
-            })
-        })
-        .collect();
-    index_map.sort_keys();
-    Ok(DownloadLinks(index_map))
+    data.sort_keys();
+    Ok(DownloadLinks(data))
 }
 
 /// 读取 xlsx 文件，并处理解析过的每行数据
