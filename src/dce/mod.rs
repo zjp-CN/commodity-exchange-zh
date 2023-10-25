@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 use std::io::{Read, Seek};
 use time::Date;
 
-pub mod parse;
-use self::parse::{as_date, as_f32, as_str, as_u32, parse_xslx_header, LEN};
+mod parse;
+pub use parse::parse_download_links;
+pub mod select;
 
 pub static DOWNLOAD_LINKS: &[u8] = include_bytes!("../../tests/dce.bincode");
 pub const URL_PREFIX: &str = "http://www.dce.com.cn";
@@ -66,7 +67,7 @@ pub fn read_dce_xlsx<R: Read + Seek>(
     };
     let mut rows = sheet.rows();
     let header = rows.next().context("无法读取第一行")?;
-    let pos = parse_xslx_header(header)?;
+    let pos = parse::parse_xslx_header(header)?;
     for row in rows {
         handle(Data::new(row, &pos)?)?;
     }
@@ -108,6 +109,8 @@ pub struct Data {
 
 impl Data {
     pub fn new(row: &[DataType], pos: &[usize]) -> Result<Data> {
+        use parse::{as_date, as_f32, as_str, as_u32, LEN};
+
         ensure!(pos.len() == LEN, "xlsx 的表头有效列不足 {LEN}：{pos:?}");
         let err = |n: usize| format!("{row:?} 无法获取到第 {n} 个单元格数据");
         Ok(Data {

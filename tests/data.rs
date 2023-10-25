@@ -1,7 +1,7 @@
 use calamine::Reader;
 use commodity_exchange_zh::{
     czce::{clickhouse_execute, clickhouse_insert, parse_txt},
-    dce::{parse::parse_download_links, read_dce_xlsx, DownloadLinks, DOWNLOAD_LINKS},
+    dce::{parse_download_links, read_dce_xlsx, DownloadLinks, DOWNLOAD_LINKS},
     ensure, util, Result,
 };
 use insta::assert_display_snapshot as shot;
