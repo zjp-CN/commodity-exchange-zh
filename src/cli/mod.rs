@@ -27,9 +27,13 @@ enum Exchange {
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(subcommand, name = "dce")]
 struct Dce {
-    /// 交互式选择年份和品种。该参数与其他参数互斥。
+    /// 交互式选择年份和品种。该参数与除 `--with-options` 的其他参数互斥。
     #[argh(switch, short = 's')]
     select: bool,
+
+    /// 搭配 `-s`/`--select` 表示附带期权选择。
+    #[argh(switch)]
+    with_options: bool,
 
     /// 年份：xxxx 年或者 xxxx..xxxx 年。如 `-y 2022` 或者等价的 `-y 2022..2023`。
     #[argh(option, short = 'y')]
@@ -56,6 +60,7 @@ impl Args {
             Exchange::Czce(Czce { year }) => year.for_each_year(czce::run)?,
             Exchange::Dce(d) => {
                 if d.select {
+                    dce::select::select(d.with_options)?;
                 } else if let Some(year) = d.year {
                     year.for_each_year(|y| {
                         for kind in &d.kinds {

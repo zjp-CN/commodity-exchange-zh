@@ -41,6 +41,13 @@ pub struct Key {
     pub name: Str,
 }
 
+impl std::fmt::Display for Key {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Key { year, name } = self;
+        write!(f, "({year}, {name})")
+    }
+}
+
 impl Equivalent<Key> for (u16, &str) {
     fn equivalent(&self, key: &Key) -> bool {
         self.0 == key.year && self.1 == key.name
