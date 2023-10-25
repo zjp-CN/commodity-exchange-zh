@@ -88,7 +88,7 @@ pub fn parse_download_links(html: &str) -> Result<DownloadLinks> {
         uls_len == options_len,
         "年份数量 {options_len} 与列表数量 {uls_len} 不相等，需检查 HTML"
     );
-    let mut data = IndexMap::with_capacity(options_len);
+    let mut data = IndexMap::with_capacity(options_len * 16);
     for (option, ul) in options.into_iter().zip(uls) {
         let year_str = option
             .get(parser)
