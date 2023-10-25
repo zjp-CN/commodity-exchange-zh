@@ -1,62 +1,77 @@
 use crate::{Result, Str};
-use commodity_exchange_zh::Exchange;
+use argh::FromArgs;
+use commodity_exchange_zh::{czce, dce};
 use regex::Regex;
 
 #[doc = "\
-下载、解析和保存商品期货交易所数据。基本命令：
+下载、解析和保存商品期货交易所数据。子命令示例：
 
-* -e czce -y 2010..2023：下载郑州交易所 2010 至 2022 年所有合约数据
-* -e dce -y 2022 -k C -k M：下载大连交易所玉米和豆粕两个品种的数据
-
-注意：
-1. `-e` 和 `-y` 用来指定交易所和年份，为必填项
-2. `k` 用于无法下载全部合约时指定品种，目前 dce （大连交易所）需要此参数来选择品种
-3. “品种” 不等于 “合约”\
+* czce -y 2010..2023：下载郑州交易所 2010 至 2022 年所有合约数据
+* dce -y 2020..=2023 C M：下载大连交易所 2019 至 2022 年玉米和豆粕两个品种的数据
+* dce -s：交互式选择大连交易所年份和品种
 "]
-#[derive(argh::FromArgs, Debug)]
+#[derive(FromArgs, Debug)]
 pub struct Args {
-    /// 交易所。此参数只支持指定单个交易所，且输入的合约或品种必须都为这个交易所。
-    #[argh(option, short = 'e')]
+    #[argh(subcommand)]
     exchange: Exchange,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand)]
+enum Exchange {
+    Czce(Czce),
+    Dce(Dce),
+}
+
+/// 大连交易所
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "dce")]
+struct Dce {
+    /// 交互式选择年份和品种。该参数与其他参数互斥。
+    #[argh(switch, short = 's')]
+    select: bool,
 
     /// 年份：xxxx 年或者 xxxx..xxxx 年。如 `-y 2022` 或者等价的 `-y 2022..2023`。
     #[argh(option, short = 'y')]
-    year: Year,
+    year: Option<Year>,
 
     /// 品种代码。可指定多个或者不指定（支持下载所有合约的交易所无需指定）。
-    #[argh(option, short = 'k')]
-    kind: Vec<Str>,
+    #[argh(positional, greedy)]
+    kinds: Vec<Str>,
+}
+
+/// 郑州交易所
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "czce")]
+struct Czce {
+    /// 年份：xxxx 年或者 xxxx..xxxx 年。如 `-y 2022` 或者等价的 `-y 2022..2023`。
+    #[argh(option, short = 'y')]
+    year: Year,
 }
 
 impl Args {
-    fn check(&self) -> Result<()> {
-        match self.exchange {
-            Exchange::dce if self.kind.is_empty() => {
-                bail!("大连交易所 (dce) 不支持下载所有合约，请使用 -k 指定品种");
-            }
-            _ => (),
-        }
-        debug!("args = {self:?}");
-        Ok(())
-    }
-
     pub fn run(self) -> Result<()> {
-        self.check()?;
-
-        match self.year {
-            Year::Single(y) => self.exchange.run(y)?,
-            Year::Range { start, end } => {
-                for y in start..end {
-                    self.exchange.run(y)?;
+        debug!("Args = {self:?}");
+        match self.exchange {
+            Exchange::Czce(Czce { year }) => year.for_each_year(czce::run)?,
+            Exchange::Dce(d) => {
+                if d.select {
+                } else if let Some(year) = d.year {
+                    year.for_each_year(|y| {
+                        for kind in &d.kinds {
+                            let link = dce::get_download_link(y, kind)?;
+                            info!("{link}");
+                        }
+                        Ok(())
+                    })?;
                 }
             }
         }
-
         Ok(())
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum Year {
     Single(u16),
     /// start..end
@@ -88,5 +103,14 @@ impl std::str::FromStr for Year {
             Year::Single(parse("single")?)
         };
         Ok(year)
+    }
+}
+
+impl Year {
+    fn for_each_year(self, mut f: impl FnMut(u16) -> Result<()>) -> Result<()> {
+        match self {
+            Year::Single(year) => f(year),
+            Year::Range { start, end } => (start..end).try_for_each(f),
+        }
     }
 }
