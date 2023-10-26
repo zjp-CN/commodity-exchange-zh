@@ -1,4 +1,4 @@
-use super::{get_url, Key, Result};
+use super::{get_url, run, Key, Result};
 use crate::util::init_data;
 use inquire::{InquireError, MultiSelect};
 
@@ -19,8 +19,9 @@ pub fn select(with_options: bool) -> Result<()> {
         Err(InquireError::OperationInterrupted | InquireError::OperationCanceled) => return Ok(()),
         Err(err) => bail!("交互出现问题：{err:?}"),
     };
-    for Key { year, name } in keys {
-        println!("{}", get_url(*year, name)?);
+    for &Key { year, ref name } in keys {
+        info!("正在从 {} 下载文件", get_url(year, name)?);
+        run(year, name)?;
     }
     Ok(())
 }

@@ -91,7 +91,6 @@ pub fn run(year: u16, name: &str) -> Result<()> {
     let (xlsx, len) = if link.ends_with(".xlsx") {
         let raw = fetch(&link)?;
         let len = raw.get_ref().len();
-        info!("从 {link} 获取了 xlsx 文件 ({})", ByteSize(len as _));
         (raw, len)
     } else if link.ends_with(".zip") {
         let raw = fetch(&link)?;
@@ -107,6 +106,7 @@ pub fn run(year: u16, name: &str) -> Result<()> {
         writer.serialize(&data)?;
         Ok(())
     })?;
+    writer.flush()?;
     let fname = format!("{year}-{name}.csv");
     let bytes = writer.get_ref();
     save_csv(bytes, &fname)?;
