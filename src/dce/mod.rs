@@ -1,5 +1,5 @@
 use crate::{
-    util::{fetch, init_data, save_csv},
+    util::{fetch, fetch_zip, init_data, save_csv},
     Result, Str,
 };
 use bincode::{Decode, Encode};
@@ -8,7 +8,7 @@ use calamine::{DataType, Reader};
 use color_eyre::eyre::{Context, ContextCompat};
 use indexmap::{Equivalent, IndexMap};
 use serde::{Deserialize, Serialize};
-use std::io::{Read, Seek};
+use std::io::{Cursor, Read, Seek};
 use time::Date;
 
 mod parse;
@@ -88,16 +88,24 @@ pub fn read_xlsx<R: Read + Seek>(
 
 pub fn run(year: u16, name: &str) -> Result<()> {
     let link = get_url(year, name)?;
-    let (xlsx, len) = if link.ends_with(".xlsx") {
-        let raw = fetch(&link)?;
-        let len = raw.get_ref().len();
-        (raw, len)
+    let xlsx = if link.ends_with(".xlsx") {
+        fetch(&link)?
     } else if link.ends_with(".zip") {
-        let raw = fetch(&link)?;
-        todo!()
+        let mut v = Vec::with_capacity(1);
+        fetch_zip(&link, |raw, fname| {
+            v.push((raw, fname));
+            Ok(())
+        })?;
+        ensure!(
+            v.len() == 1,
+            "无法处理 {link} 内的多文件：{:?}",
+            v.iter().map(|v| &v.1).collect::<Vec<_>>()
+        );
+        Cursor::new(v.remove(0).0)
     } else {
         bail!("暂时无法处理 {link}，因为只支持 xlsx 或者 zip 文件");
     };
+    let len = xlsx.get_ref().len();
     let mut writer = csv::WriterBuilder::new()
         .has_headers(false)
         .buffer_capacity(len)

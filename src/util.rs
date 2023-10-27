@@ -6,8 +6,9 @@ use simplelog::{
     ColorChoice, Config, ConfigBuilder, LevelFilter, SimpleLogger, TermLogger, TerminalMode,
 };
 use std::{
+    borrow::Cow,
     fs::File,
-    io::{Cursor, ErrorKind, Write},
+    io::{self, Cursor, ErrorKind, Write},
     path::{Path, PathBuf},
     sync::OnceLock,
 };
@@ -112,6 +113,63 @@ pub fn parse_u32_from_f32<'de, D: Deserializer<'de>>(d: D) -> Result<u32, D::Err
     } else {
         Ok(float as _)
     }
+}
+
+pub enum Encoding {
+    UTF8,
+    GBK,
+}
+
+pub fn fetch_zip(
+    url: &str,
+    mut handle_unzipped: impl FnMut(Vec<u8>, String) -> Result<()>,
+) -> Result<()> {
+    let fetched = fetch(url)?;
+    let mut zipped = zip::ZipArchive::new(fetched)?;
+    for i in 0..zipped.len() {
+        let mut unzipped = zipped.by_index(i)?;
+        if unzipped.is_file() {
+            let unzipped_path = unzipped
+                .enclosed_name()
+                .ok_or_else(|| eyre!("`{}` 无法转成 &Path", unzipped.name()))?;
+            let size = unzipped.size();
+            let unzipped_path_display = unzipped_path.display().to_string();
+            info!(
+                "{url} 获取的第 {i} 个文件：{unzipped_path_display} ({} => {})",
+                ByteSize(unzipped.compressed_size()),
+                ByteSize(size),
+            );
+            let file_name = unzipped_path
+                .file_name()
+                .and_then(|fname| Some(fname.to_str()?.to_owned()))
+                .ok_or_else(|| eyre!("无法从 {unzipped_path:?} 中获取文件名"))?;
+            let mut buf = Vec::with_capacity(size as usize);
+            io::copy(&mut unzipped, &mut buf)?;
+            handle_unzipped(buf, file_name)?;
+        } else {
+            bail!("{} 还未实现解压成文件夹", unzipped.name());
+        }
+    }
+    Ok(())
+}
+
+/// 处理编码
+pub fn read_txt<'a>(buf: &'a [u8], src: &str) -> Result<(Cow<'a, str>, Encoding)> {
+    let content_encoding = match std::str::from_utf8(buf) {
+        Ok(s) => (s.into(), Encoding::UTF8),
+        Err(_) => {
+            let gbk = encoding_rs::GBK;
+            info!("{src} 不是 UTF8 编码的，尝试使用 GBK 解码");
+            let (cow, encoding, err) = gbk.decode(buf);
+            if err {
+                bail!("{src} 不是 GBK 编码的，需要手动确认编码");
+            } else if encoding != gbk {
+                bail!("{src} GBK/{encoding:?} 解码失败");
+            }
+            (cow, Encoding::GBK)
+        }
+    };
+    Ok(content_encoding)
 }
 
 /// 缓存目录

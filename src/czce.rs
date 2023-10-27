@@ -1,12 +1,11 @@
 use crate::{
-    util::{fetch, init_data, save_csv},
+    util::{fetch_zip, init_data, read_txt, save_csv, Encoding},
     Result, Str,
 };
 use bytesize::ByteSize;
 use serde::Deserialize;
 use std::{
     io,
-    path::PathBuf,
     process::{Command, Output, Stdio},
 };
 use time::Date;
@@ -89,8 +88,17 @@ pub struct Data {
 }
 
 pub fn run(year: u16) -> Result<()> {
-    fetch_txt(year, |raw, fname, status| {
-        let csv_content = parse_txt(raw, None::<fn(_) -> _>)?;
+    // NOTE: GBK 编码的表头与现有 UTF8 的表头和内容不一致：
+    // * 空盘量（GBK） -> 持仓量（UTF8)
+    // * 换行符是 CRLF -> LF
+    // * 换行符前为 `交割结算价|` -> `交割结算价`
+    // * 交割结算价的若无实际数据则为 0 -> 空
+    //  （从而 SQL 需要把 dsp 为 0 替换成 NULL）
+    // TODO: 该函数返回一个状态来在录入当年数据后替换 dsp 的 SQL 语句
+    fetch_zip(&get_url(year)?, |raw, fname| {
+        let (txt, encoding) = read_txt(&raw, &fname)?;
+        let csv_content = parse_txt(&txt, None::<fn(_) -> _>)?;
+        let fname = format!("czce-{fname}");
         std::thread::scope(|s| {
             let task1 = s.spawn(|| save_csv(csv_content.trim().as_bytes(), fname));
             let task2 = s.spawn(|| -> Result<()> {
@@ -113,7 +121,7 @@ pub fn run(year: u16) -> Result<()> {
                     .and_then(|(new, old)| new.checked_sub(old).map(|r| r.to_string()))
                     .unwrap_or_default();
                 info!("{TABLE} 现有数据 {count_new} 条（增加了 {added} 条）");
-                if status.change_0_to_null {
+                if matches!(encoding, Encoding::GBK) {
                     clickhouse_execute(&format!(
                         "ALTER TABLE qihuo.czce UPDATE dsp=Null \
                          WHERE dsp==0 AND year(date)=={year};"
@@ -136,68 +144,6 @@ pub fn run(year: u16) -> Result<()> {
         info!("成功获取 {year} 年的数据\n来自【郑州交易所】的数据备注：{MEMO}");
         Ok(())
     })
-}
-
-#[derive(Default)]
-pub struct Status {
-    change_0_to_null: bool,
-}
-
-pub fn fetch_txt(
-    year: u16,
-    mut handle_unzipped: impl FnMut(&str, PathBuf, &Status) -> Result<()>,
-) -> Result<()> {
-    let url = get_url(year)?;
-    let fetched = fetch(&url)?;
-    let mut zipped = zip::ZipArchive::new(fetched)?;
-    for i in 0..zipped.len() {
-        let mut unzipped = zipped.by_index(i)?;
-        if unzipped.is_file() {
-            let unzipped_path = unzipped
-                .enclosed_name()
-                .ok_or_else(|| eyre!("`{}` 无法转成 &Path", unzipped.name()))?;
-            let size = unzipped.size();
-            let unzipped_path_display = unzipped_path.display().to_string();
-            info!(
-                "{url} 获取的第 {i} 个文件：{unzipped_path_display} ({} => {})",
-                ByteSize(unzipped.compressed_size()),
-                ByteSize(size),
-            );
-            let file_name = unzipped_path
-                .file_name()
-                .and_then(|fname| Some(format!("郑州-{}", fname.to_str()?)))
-                .ok_or_else(|| eyre!("无法从 {unzipped_path:?} 中获取文件名"))?;
-            let mut buf = Vec::with_capacity(size as usize);
-            io::copy(&mut unzipped, &mut buf)?;
-            let mut status = Status::default();
-            let content = match std::str::from_utf8(&buf) {
-                Ok(s) => s.into(),
-                Err(_) => {
-                    let gbk = encoding_rs::GBK;
-                    info!("{unzipped_path_display} 不是 UTF8 编码的，尝试使用 GBK 解码");
-                    let (cow, encoding, err) = gbk.decode(&buf);
-                    if err {
-                        bail!("{unzipped_path_display} 不是 GBK 编码的，需要手动确认编码");
-                    } else if encoding != gbk {
-                        bail!("{unzipped_path_display} GBK/{encoding:?} 解码失败");
-                    }
-                    // NOTE: GBK 编码的表头与现有 UTF8 的表头和内容不一致：
-                    // * 空盘量（GBK） -> 持仓量（UTF8)
-                    // * 换行符是 CRLF -> LF
-                    // * 换行符前为 `交割结算价|` -> `交割结算价`
-                    // * 交割结算价的若无实际数据则为 0 -> 空
-                    //  （从而 SQL 需要把 dsp 为 0 替换成 NULL）
-                    // TODO: 该函数返回一个状态来在录入当年数据后替换 dsp 的 SQL 语句
-                    status.change_0_to_null = true;
-                    cow
-                }
-            };
-            handle_unzipped(&content, file_name.into(), &status)?;
-        } else {
-            bail!("{} 还未实现解压成文件夹", unzipped.name());
-        }
-    }
-    Ok(())
 }
 
 pub fn parse_txt(raw: &str, f: Option<impl FnMut(Data)>) -> Result<String> {
