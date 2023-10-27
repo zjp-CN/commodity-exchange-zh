@@ -124,8 +124,18 @@ pub fn fetch_zip(
     url: &str,
     mut handle_unzipped: impl FnMut(Vec<u8>, String) -> Result<()>,
 ) -> Result<()> {
-    let fetched = fetch(url)?;
-    let mut zipped = zip::ZipArchive::new(fetched)?;
+    let mut fetched = fetch(url)?;
+    let mut zipped = match zip::ZipArchive::new(&mut fetched) {
+        Ok(data) => data,
+        Err(err) => {
+            let file = init_data().cache_dir.join("failed");
+            File::create(&file)?.write_all(fetched.get_ref())?;
+            bail!(
+                "无法解析 zip 文件，下载的内容保存在 {}：{err:?}",
+                file.display()
+            );
+        }
+    };
     for i in 0..zipped.len() {
         let mut unzipped = zipped.by_index(i)?;
         if unzipped.is_file() {
