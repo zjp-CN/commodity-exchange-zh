@@ -76,9 +76,10 @@ pub fn init_data() -> &'static Init {
 pub type Response = Result<Cursor<Vec<u8>>>;
 
 pub fn fetch(url: &str) -> Response {
-    let bytes = minreq::get(url).send()?.into_bytes();
-    info!("{url} 获取的字节数：{}", ByteSize(bytes.len() as u64));
-    Ok(Cursor::new(bytes))
+    let mut buf = Vec::with_capacity(1024 * 1024 * 4);
+    ureq::get(url).call()?.into_reader().read_to_end(&mut buf)?;
+    info!("{url} 获取的字节数：{}", ByteSize(buf.len() as u64));
+    Ok(Cursor::new(buf))
 }
 
 pub fn parse_date_czce<'de, D: Deserializer<'de>>(d: D) -> Result<Date, D::Error> {
