@@ -1,5 +1,4 @@
 use super::{Context, ContextCompat, DataType, Date, DownloadLinks, IndexMap, Key, Result, Str};
-use std::collections::HashMap;
 
 pub fn parse_download_links(html: &str) -> Result<DownloadLinks> {
     fn query_err(s: &str) -> String {
@@ -92,12 +91,14 @@ pub fn parse_download_links(html: &str) -> Result<DownloadLinks> {
 /// Xlsx 中的数据的正确位置（不同年份具有不同的表头），因此需要先识别表头。
 pub fn parse_xslx_header(header: &[DataType]) -> Result<Vec<usize>> {
     use Field::*;
-    let mut pos = HashMap::with_capacity(LEN);
+    let mut pos = IndexMap::with_capacity(LEN);
+    let mut cols = Vec::with_capacity(LEN + 8);
     for (idx, h) in header.iter().enumerate() {
-        match h
+        let col = h
             .get_string()
-            .with_context(|| format!("无法按照字符串读取第一行：{header:?}"))?
-        {
+            .with_context(|| format!("无法按照字符串读取第一行：{header:?}"))?;
+        cols.push(col);
+        match col {
             "合约" => {
                 pos.insert(合约, idx);
             }
@@ -134,7 +135,8 @@ pub fn parse_xslx_header(header: &[DataType]) -> Result<Vec<usize>> {
             "成交量" => {
                 pos.insert(成交量, idx);
             }
-            "成交额" => {
+            "成交额" | "成交金额" => {
+                // 2017 年 csv （实际 xlsx）这列出现“成交金额”
                 pos.insert(成交额, idx);
             }
             "持仓量" => {
@@ -143,12 +145,37 @@ pub fn parse_xslx_header(header: &[DataType]) -> Result<Vec<usize>> {
             _ => (),
         }
     }
-    ensure!(pos.len() == LEN, "xlsx 的表头有效列不足 {LEN}：{pos:?}");
+    const FIELDS: [Field; LEN] = [
+        合约,
+        日期,
+        // 前收盘价,
+        前结算价,
+        开盘价,
+        最高价,
+        最低价,
+        收盘价,
+        结算价,
+        涨跌1,
+        涨跌2,
+        成交量,
+        成交额,
+        持仓量,
+    ];
+    let len = pos.len();
+    if len != LEN {
+        let missing: Vec<_> = FIELDS
+            .into_iter()
+            .filter(|f| pos.get(f).is_none())
+            .collect();
+        bail!(
+            "xlsx 的表头有效列只有 {len} 个（不足 {LEN}），\
+            缺少 {missing:?}\n有效列应为 {FIELDS:?}\n但实际列为 {cols:?}"
+        );
+    }
     // 通过 HashMap 确定所有字段在第几列，并按字段顺序解析
     // 所以 Field 的变体顺序与 Data 的字段顺序必须一致
-    let mut field_pos: Vec<_> = pos.into_iter().collect();
-    field_pos.sort_by_key(|v| v.0);
-    Ok(field_pos.into_iter().map(|v| v.1).collect())
+    pos.sort_keys();
+    Ok(pos.into_iter().map(|v| v.1).collect())
 }
 
 pub fn as_str(cell: &DataType) -> Result<Str> {
