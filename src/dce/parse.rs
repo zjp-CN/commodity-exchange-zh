@@ -158,20 +158,27 @@ pub fn as_str(cell: &DataType) -> Result<Str> {
 }
 
 pub fn as_date(cell: &DataType) -> Result<Date> {
-    let u = as_u32(cell)?;
-    let year = u / 10000;
-    let minus_year = u - year * 10000;
-    let month = (minus_year) / 100;
-    let day = minus_year - month * 100;
-    Ok(Date::from_calendar_date(
-        year.try_into()
-            .with_context(|| format!("{year} 无法转成 i32"))?,
-        u8::try_from(month)
-            .with_context(|| format!("{month} 无法转成 u8"))?
-            .try_into()
-            .with_context(|| format!("{month} 无法转成月份"))?,
-        u8::try_from(day).with_context(|| format!("{day} 无法转成 u8"))?,
-    )?)
+    use time::{format_description::FormatItem, macros::format_description};
+    const FMT: &[FormatItem<'static>] = format_description!("[year][month][day]");
+    if let Ok(s) = as_str(cell) {
+        Date::parse(&s, &FMT).map_err(|err| eyre!("{s} 无法解析为日期：{err:?}"))
+    } else if let Ok(u) = as_u32(cell) {
+        let year = u / 10000;
+        let minus_year = u - year * 10000;
+        let month = (minus_year) / 100;
+        let day = minus_year - month * 100;
+        Ok(Date::from_calendar_date(
+            year.try_into()
+                .with_context(|| format!("{year} 无法转成 i32"))?,
+            u8::try_from(month)
+                .with_context(|| format!("{month} 无法转成 u8"))?
+                .try_into()
+                .with_context(|| format!("{month} 无法转成月份"))?,
+            u8::try_from(day).with_context(|| format!("{day} 无法转成 u8"))?,
+        )?)
+    } else {
+        bail!("{cell} 无法通过 as_str 或 as_u32 解析")
+    }
 }
 
 pub fn as_f32(cell: &DataType) -> Result<f32> {
