@@ -3,11 +3,14 @@ use crate::util::init_data;
 use inquire::{InquireError, MultiSelect};
 
 pub fn select(with_options: bool) -> Result<()> {
-    let year_name = init_data().links_dce.iter().map(|(k, _)| k);
+    let year_name = init_data().links_dce.iter();
     let options: Vec<_> = if with_options {
-        year_name.collect()
+        year_name.map(|(k, _)| k).collect()
     } else {
-        year_name.filter(|k| !k.name.contains("期权")).collect()
+        year_name
+            .filter(|(k, link)| !(k.name.contains("期权") || link.ends_with(".zip")))
+            .map(|(k, _)| k)
+            .collect()
     };
     let msg = format!(
         "请从大连交易所的 {} 条链接中选择 (年份, 品种)",

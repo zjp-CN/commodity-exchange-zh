@@ -1,5 +1,5 @@
 use crate::{
-    util::{fetch, fetch_zip, init_data, save_csv},
+    util::{fetch, fetch_zip, init_data, read_txt, save_csv},
     Result, Str,
 };
 use bincode::{Decode, Encode};
@@ -8,7 +8,7 @@ use calamine::{DataType, Reader};
 use color_eyre::eyre::{Context, ContextCompat};
 use indexmap::{Equivalent, IndexMap};
 use serde::{Deserialize, Serialize};
-use std::io::{Cursor, Read, Seek};
+use std::io::{Read, Seek};
 use time::Date;
 
 mod parse;
@@ -88,20 +88,30 @@ pub fn read_xlsx<R: Read + Seek>(
 
 pub fn run(year: u16, name: &str) -> Result<()> {
     let link = get_url(year, name)?;
-    let xlsx = if link.ends_with(".xlsx") {
+    let xlsx = if link.ends_with(".xlsx") || link.ends_with(".csv") {
+        // xxx.csv 其实也是 xlsx 文件 :(
         fetch(&link)?
     } else if link.ends_with(".zip") {
-        let mut v = Vec::with_capacity(1);
+        // TODO: zip 压缩的是 csv 文件（文件名乱码），所以需要解析 （GBK 编码）
+        // NOTE: zip 文件只在 2017 年及其之前提供，并且无法通过直接的 get 下载到
+        //       （貌似最重要的是请求时带上 cookies，但它有时效性，很快失效，因此暂时不要 .zip 数据）
+        // tests/snapshots/data__dce-downloadlink.snap
+        // let mut v = Vec::with_capacity(1);
         fetch_zip(&link, |raw, fname| {
-            v.push((raw, fname));
+            let (csv, _) = read_txt(&raw, &fname)?;
+            for line in csv.lines().take(3) {
+                info!("{line}");
+            }
+            // v.push((raw, fname));
             Ok(())
         })?;
-        ensure!(
-            v.len() == 1,
-            "无法处理 {link} 内的多文件：{:?}",
-            v.iter().map(|v| &v.1).collect::<Vec<_>>()
-        );
-        Cursor::new(v.remove(0).0)
+        return Ok(());
+        // ensure!(
+        //     v.len() == 1,
+        //     "无法处理 {link} 内的多文件：{:?}",
+        //     v.iter().map(|v| &v.1).collect::<Vec<_>>()
+        // );
+        // Cursor::new(v.remove(0).0)
     } else {
         bail!("暂时无法处理 {link}，因为只支持 xlsx 或者 zip 文件");
     };
@@ -115,7 +125,7 @@ pub fn run(year: u16, name: &str) -> Result<()> {
         Ok(())
     })?;
     writer.flush()?;
-    let fname = format!("{year}-{name}.csv");
+    let fname = format!("dce-{year}-{name}.csv");
     let bytes = writer.get_ref();
     save_csv(bytes, &fname)?;
     info!(
