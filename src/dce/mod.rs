@@ -1,14 +1,10 @@
-use crate::{
-    util::{fetch, fetch_zip, init_data, read_txt, save_csv},
-    Result, Str,
-};
+use crate::{util, Result, Str};
 use bincode::{Decode, Encode};
-use bytesize::ByteSize;
 use calamine::{DataType, Reader};
 use color_eyre::eyre::{Context, ContextCompat};
 use indexmap::{Equivalent, IndexMap};
 use serde::{Deserialize, Serialize};
-use std::io::{Read, Seek};
+use std::io;
 use time::Date;
 
 mod parse;
@@ -60,7 +56,7 @@ impl Equivalent<Key> for (u16, &str) {
 }
 
 pub fn get_url(year: u16, name: &str) -> Result<String> {
-    let index_map = &init_data().links_dce.0;
+    let index_map = &util::init_data().links_dce.0;
     let postfix = index_map
         .get(&(year, name))
         .with_context(|| format!("无法找到 {year} 年 {name} 品种的下载链接"))?;
@@ -68,7 +64,7 @@ pub fn get_url(year: u16, name: &str) -> Result<String> {
 }
 
 /// 读取 xlsx 文件，并处理解析过的每行数据
-pub fn read_xlsx<R: Read + Seek>(
+pub fn read_xlsx<R: io::Read + io::Seek>(
     mut wb: calamine::Xlsx<R>,
     mut handle: impl FnMut(Data) -> Result<()>,
 ) -> Result<()> {
@@ -90,15 +86,15 @@ pub fn run(year: u16, name: &str) -> Result<()> {
     let link = get_url(year, name)?;
     let xlsx = if link.ends_with(".xlsx") || link.ends_with(".csv") {
         // xxx.csv 其实也是 xlsx 文件 :(
-        fetch(&link)?
+        util::fetch(&link)?
     } else if link.ends_with(".zip") {
         // TODO: zip 压缩的是 csv 文件（文件名乱码），所以需要解析 （GBK 编码）
         // NOTE: zip 文件只在 2017 年及其之前提供，并且无法通过直接的 get 下载到
         //       （貌似最重要的是请求时带上 cookies，但它有时效性，很快失效，因此暂时不要 .zip 数据）
         // tests/snapshots/data__dce-downloadlink.snap
         // let mut v = Vec::with_capacity(1);
-        fetch_zip(&link, |raw, fname| {
-            let (csv, _) = read_txt(&raw, &fname)?;
+        util::fetch_zip(&link, |raw, fname| {
+            let (csv, _) = util::read_txt(&raw, &fname)?;
             for line in csv.lines().take(3) {
                 info!("{line}");
             }
@@ -127,12 +123,14 @@ pub fn run(year: u16, name: &str) -> Result<()> {
     writer.flush()?;
     let fname = format!("dce-{year}-{name}.csv");
     let bytes = writer.get_ref();
-    save_csv(bytes, &fname)?;
-    info!(
-        "已写入 {}/{fname} ({})",
-        init_data().cache_dir.display(),
-        ByteSize(bytes.len() as _)
-    );
+    util::save_to_csv_and_clickhouse(
+        || util::save_csv(bytes, &fname),
+        || {
+            util::clickhouse_execute(include_str!("../sql/dce.sql"))?;
+            const TABLE: &str = "qihuo.dce";
+            util::clichouse_insert_with_count_reported(TABLE, writer.get_ref())
+        },
+    )?;
     Ok(())
 }
 
