@@ -200,13 +200,33 @@ pub fn cache_dir() -> Result<PathBuf> {
     Ok(dir)
 }
 
-pub fn save_csv(s: &[u8], filename: impl AsRef<Path>) -> Result<PathBuf> {
+pub fn save_csv(bytes: &[u8], filename: impl AsRef<Path>) -> Result<PathBuf> {
     let fname = filename.as_ref();
     let mut path = init_data().cache_dir.join(fname);
     if !path.set_extension("csv") {
         error!("{} 无法设置 csv 文件名后缀", fname.display());
     }
-    File::create(&path)?.write_all(s)?;
+    File::create(&path)?.write_all(bytes)?;
     info!("{} 已被写入", path.display());
     Ok(path)
+}
+
+pub fn save_to_csv_and_clickhouse<F, G>(csv: F, ch: G) -> Result<()>
+where
+    F: Send + FnOnce() -> Result<PathBuf>,
+    G: Send + FnOnce() -> Result<()>,
+{
+    std::thread::scope(|s| {
+        let task1 = s.spawn(csv);
+        let task2 = s.spawn(ch);
+        match task1.join() {
+            Ok(res) => _ = res?,
+            Err(err) => bail!("save_csv 运行失败：{err:?}"),
+        }
+        match task2.join() {
+            Ok(res) => res?,
+            Err(err) => bail!("保存到 clickhouse 运行失败：{err:?}"),
+        }
+        Ok(())
+    })
 }

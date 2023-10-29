@@ -1,7 +1,4 @@
-use crate::{
-    util::{fetch_zip, init_data, read_txt, save_csv, Encoding},
-    Result, Str,
-};
+use crate::{util, Result, Str};
 use bytesize::ByteSize;
 use serde::Deserialize;
 use std::{
@@ -17,7 +14,7 @@ const MEMO: &str = "自2020年1月1日起，成交量、持仓量、成交额、
 /// 2015..=2019 使用 http://www.czce.com.cn/cn/DFSStaticFiles/Future/2019/FutureDataHistory.zip
 /// 2020..      使用 http://www.czce.com.cn/cn/DFSStaticFiles/Future/2023/ALLFUTURES2023.zip
 pub fn get_url(year: u16) -> Result<String> {
-    let this_year = init_data().this_year;
+    let this_year = util::init_data().this_year;
     let url = match year {
         2010..=2014 => format!("http://www.czce.com.cn/cn/exchange/datahistory{year}.zip"),
         2015..=2019 => {
@@ -95,13 +92,13 @@ pub fn run(year: u16) -> Result<()> {
     // * 交割结算价的若无实际数据则为 0 -> 空
     //  （从而 SQL 需要把 dsp 为 0 替换成 NULL）
     // TODO: 该函数返回一个状态来在录入当年数据后替换 dsp 的 SQL 语句
-    fetch_zip(&get_url(year)?, |raw, fname| {
-        let (txt, encoding) = read_txt(&raw, &fname)?;
+    util::fetch_zip(&get_url(year)?, |raw, fname| {
+        let (txt, encoding) = util::read_txt(&raw, &fname)?;
         let csv_content = parse_txt(&txt, None::<fn(_) -> _>)?;
         let fname = format!("czce-{fname}");
-        std::thread::scope(|s| {
-            let task1 = s.spawn(|| save_csv(csv_content.trim().as_bytes(), fname));
-            let task2 = s.spawn(|| -> Result<()> {
+        util::save_to_csv_and_clickhouse(
+            || util::save_csv(csv_content.trim().as_bytes(), fname),
+            || {
                 clickhouse_execute(include_str!("./sql/czce.sql"))?;
                 const TABLE: &str = "qihuo.czce";
                 let sql_count = format!("SELECT count(*) FROM {TABLE}");
@@ -121,7 +118,7 @@ pub fn run(year: u16) -> Result<()> {
                     .and_then(|(new, old)| new.checked_sub(old).map(|r| r.to_string()))
                     .unwrap_or_default();
                 info!("{TABLE} 现有数据 {count_new} 条（增加了 {added} 条）");
-                if matches!(encoding, Encoding::GBK) {
+                if matches!(encoding, util::Encoding::GBK) {
                     clickhouse_execute(&format!(
                         "ALTER TABLE qihuo.czce UPDATE dsp=Null \
                          WHERE dsp==0 AND year(date)=={year};"
@@ -129,18 +126,8 @@ pub fn run(year: u16) -> Result<()> {
                     info!("{TABLE} 由于源数据不规范，需要将 dsp 为 0 的数据修改为 Null");
                 }
                 Ok(())
-            });
-
-            match task1.join() {
-                Ok(res) => _ = res?,
-                Err(err) => bail!("save_csv 运行失败：{err:?}"),
-            }
-            match task2.join() {
-                Ok(res) => res?,
-                Err(err) => bail!("保存到 clickhouse 运行失败：{err:?}"),
-            }
-            Ok(())
-        })?;
+            },
+        )?;
         info!("成功获取 {year} 年的数据\n来自【郑州交易所】的数据备注：{MEMO}");
         Ok(())
     })
@@ -155,7 +142,7 @@ pub fn parse_txt(raw: &str, f: Option<impl FnMut(Data)>) -> Result<String> {
     }
     start += 2;
     // 删除所有数字千位分隔符和单元格内的空格
-    let stripped = init_data()
+    let stripped = util::init_data()
         .regex_czce
         .replace_all(raw[start..].trim(), "")
         .into_owned();
