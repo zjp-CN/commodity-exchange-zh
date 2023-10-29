@@ -126,9 +126,9 @@ pub fn run(year: u16, name: &str) -> Result<()> {
     util::save_to_csv_and_clickhouse(
         || util::save_csv(bytes, &fname),
         || {
-            util::clickhouse_execute(include_str!("../sql/dce.sql"))?;
+            util::clickhouse::execute(include_str!("../sql/dce.sql"))?;
             const TABLE: &str = "qihuo.dce";
-            util::clichouse_insert_with_count_reported(TABLE, writer.get_ref())
+            util::clickhouse::insert_with_count_reported(TABLE, writer.get_ref())
         },
     )?;
     Ok(())

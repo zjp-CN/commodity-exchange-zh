@@ -94,11 +94,11 @@ pub fn run(year: u16) -> Result<()> {
         util::save_to_csv_and_clickhouse(
             || util::save_csv(csv_content.trim().as_bytes(), fname),
             || {
-                util::clickhouse_execute(include_str!("./sql/czce.sql"))?;
+                util::clickhouse::execute(include_str!("./sql/czce.sql"))?;
                 const TABLE: &str = "qihuo.czce";
-                util::clichouse_insert_with_count_reported(TABLE, csv_content.as_bytes())?;
+                util::clickhouse::insert_with_count_reported(TABLE, csv_content.as_bytes())?;
                 if matches!(encoding, util::Encoding::GBK) {
-                    util::clickhouse_execute(&format!(
+                    util::clickhouse::execute(&format!(
                         "ALTER TABLE qihuo.czce UPDATE dsp=Null \
                          WHERE dsp==0 AND year(date)=={year};"
                     ))?;
