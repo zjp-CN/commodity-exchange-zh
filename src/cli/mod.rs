@@ -6,9 +6,9 @@ use regex::Regex;
 #[doc = "\
 下载、解析和保存商品期货交易所数据。子命令示例：
 
-* czce -y 2010..2023：下载郑州交易所 2010 至 2022 年所有合约数据
-* dce -y 2020..=2023 C M：下载大连交易所 2019 至 2022 年玉米和豆粕两个品种的数据
-* dce -s：交互式选择大连交易所年份和品种
+* `czce -y 2010..2023`：下载郑州交易所 2010 至 2022 年所有合约数据
+* `dce -y 2020..=2023 C M`：下载大连交易所 2019 至 2022 年玉米和豆粕两个品种的数据
+* `dce`：交互式选择大连交易所年份和品种
 "]
 #[derive(FromArgs, Debug)]
 pub struct Args {
@@ -28,6 +28,7 @@ enum Exchange {
 #[argh(subcommand, name = "dce")]
 struct Dce {
     /// 交互式选择年份和品种。该参数与除 `--with-options` 的其他参数互斥。
+    /// 当不指定品种代码，且无年份时，启用交互式选择。即 `dce` 与 `dce -s` 相同。
     #[argh(switch, short = 's')]
     select: bool,
 
@@ -39,7 +40,6 @@ struct Dce {
     #[argh(option, short = 'y')]
     year: Option<Year>,
 
-    /// 品种代码。可指定多个或者不指定（支持下载所有合约的交易所无需指定）。
     #[argh(positional, greedy)]
     kinds: Vec<Str>,
 }
@@ -48,7 +48,7 @@ struct Dce {
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(subcommand, name = "czce")]
 struct Czce {
-    /// 年份：xxxx 年或者 xxxx..xxxx 年。如 `-y 2022` 或者等价的 `-y 2022..2023`。
+    /// 年份（从 2010 年开始）：xxxx 年或者 xxxx..xxxx 年。如 `-y 2022` 或者等价的 `-y 2022..2023`。
     #[argh(option, short = 'y')]
     year: Year,
 }
@@ -59,7 +59,7 @@ impl Args {
         match self.exchange {
             Exchange::Czce(Czce { year }) => year.for_each_year(czce::run)?,
             Exchange::Dce(d) => {
-                if d.select {
+                if d.select || (d.year.is_none() && d.kinds.is_empty()) {
                     if dce::select(d.with_options)?.is_none() {
                         // None 表示被中断，不重新录入
                         return Ok(());
