@@ -19,6 +19,8 @@ mod macros {
     }
 }
 
+/// 合并各个交易所数据到一个表
+pub mod ce;
 /// 郑州商品交易所
 pub mod czce;
 /// 大连商品交易所

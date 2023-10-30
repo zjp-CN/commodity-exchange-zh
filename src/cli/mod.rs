@@ -1,6 +1,6 @@
 use crate::{Result, Str};
 use argh::FromArgs;
-use commodity_exchange_zh::{czce, dce};
+use commodity_exchange_zh::{ce, czce, dce};
 use regex::Regex;
 
 #[doc = "\
@@ -72,6 +72,8 @@ impl Args {
                 }
             }
         }
+        // 重新录入 qihuo.ce
+        ce::run()?;
         Ok(())
     }
 }
