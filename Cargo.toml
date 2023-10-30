@@ -2,7 +2,10 @@
 name = "commodity-exchange-zh"
 version = "0.1.0"
 edition = "2021"
-publish = ["ktra"]
+license = "MIT"
+exclude = ["tests", "cache"]
+repository = "https://github.com/zjp-CN/commodity-exchange-zh"
+description = "中国商品交易所数据获取工具"
 
 [dependencies]
 calamine = "0.22"
