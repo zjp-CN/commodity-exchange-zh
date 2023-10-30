@@ -60,7 +60,10 @@ impl Args {
             Exchange::Czce(Czce { year }) => year.for_each_year(czce::run)?,
             Exchange::Dce(d) => {
                 if d.select {
-                    dce::select(d.with_options)?;
+                    if dce::select(d.with_options)?.is_none() {
+                        // None 表示被中断，不重新录入
+                        return Ok(());
+                    }
                 } else if let Some(year) = d.year {
                     year.for_each_year(|y| {
                         for kind in &d.kinds {
