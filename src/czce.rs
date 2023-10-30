@@ -33,7 +33,7 @@ pub struct Data {
     /// 合约代码
     #[cfg_attr(feature = "tabled", tabled(rename = "合约代码"))]
     pub code: Str,
-    /// 昨结算
+    /// 昨结算（此列不必要：也就是上个交易日的今结算）
     #[cfg_attr(feature = "tabled", tabled(rename = "昨结算"))]
     pub prev: f32,
     /// 今开盘
@@ -48,26 +48,26 @@ pub struct Data {
     /// 今收盘
     #[cfg_attr(feature = "tabled", tabled(rename = "今收盘"))]
     pub close: f32,
-    /// 今结算
+    /// 今结算（与昨结算重合）
     #[cfg_attr(feature = "tabled", tabled(rename = "今结算"))]
     pub settle: f32,
-    /// 涨跌1：涨幅百分数??
+    /// 涨跌1（此列不必要：因为它 = close - prev）
     #[cfg_attr(feature = "tabled", tabled(rename = "涨跌1"))]
     pub zd1: f32,
-    /// 涨跌2：涨跌数??
+    /// 涨跌2（此列不必要：因为它 = settle - prev）
     #[cfg_attr(feature = "tabled", tabled(rename = "涨跌2"))]
     pub zd2: f32,
-    /// 成交量
+    /// 成交量（2020-01-01 起为单边，之前为双边）
     #[cfg_attr(feature = "tabled", tabled(rename = "成交量"))]
     pub vol: u32,
-    /// 持仓量
+    /// 持仓量（2020-01-01 起为单边，之前为双边）
     #[serde(deserialize_with = "crate::util::parse_u32_from_f32")]
     #[cfg_attr(feature = "tabled", tabled(rename = "持仓量"))]
     pub position: u32,
-    /// 增减量
+    /// 增减量（此列不必要：因为它 = 今 position - 昨 position）
     #[cfg_attr(feature = "tabled", tabled(rename = "增减量"))]
     pub pos_delta: i32,
-    /// 交易额（万）
+    /// 交易额（万元）（2020-01-01 起为单边，之前为双边，且貌似约等于 settle*vol*品种杠杆）
     #[cfg_attr(feature = "tabled", tabled(rename = "交易额（万）"))]
     pub amount: f32,
     /// 交割结算价

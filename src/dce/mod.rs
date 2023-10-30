@@ -141,7 +141,7 @@ pub struct Data {
     pub code: Str,
     /// 交易日期
     pub date: Date,
-    /// 昨结算
+    /// 昨结算（此列不必要：也就是上个交易日的今结算）
     pub prev: f32,
     /// 今开盘
     pub open: f32,
@@ -151,17 +151,17 @@ pub struct Data {
     pub low: f32,
     /// 今收盘
     pub close: f32,
-    /// 今结算
+    /// 今结算（与昨结算重合）
     pub settle: f32,
-    /// 涨跌1：涨幅百分数??
+    /// 涨跌1（此列不必要：因为它 = close - prev）
     pub zd1: f32,
-    /// 涨跌2：涨跌数??
+    /// 涨跌2（此列不必要：因为它 = settle - prev）
     pub zd2: f32,
-    /// 成交量
+    /// 成交量（双边）
     pub vol: u32,
-    /// 交易额
+    /// 交易额（疑似单边、单位元，且貌似约等于 settle*vol/2*品种杠杆）
     pub amount: u32,
-    /// 持仓量
+    /// 持仓量（双边）
     pub position: u32,
 }
 
