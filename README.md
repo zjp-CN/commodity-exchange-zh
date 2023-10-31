@@ -1,12 +1,19 @@
 # 商品交易所数据获取工具 (ce)
 
+[![Release](https://github.com/zjp-CN/commodity-exchange-zh/actions/workflows/release.yml/badge.svg)](https://github.com/zjp-CN/commodity-exchange-zh/actions/workflows/release.yml)
+[![Crates.io](https://img.shields.io/crates/v/commodity-exchange-zh)](https://crates.io/crates/commodity-exchange-zh)
+![Crates.io](https://img.shields.io/crates/d/commodity-exchange-zh)
+
 ce = **c**ommodity **e**xchange
 
 ## 安装方式
 
 * 方式一：`cargo install commodity-exchange-zh`，然后使用 `ce` 获取数据
+* 方式二：[release] 页面下载编译好的最新二进制文件
 
-```console
+[release]: https://github.com/zjp-CN/commodity-exchange-zh/releases
+
+```bash
 $ ce help
 Usage: ce <command> [<args>]
 
